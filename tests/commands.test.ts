@@ -4,7 +4,7 @@ import { harness, P, type Harness } from './harness';
 import { DAY, HOUR } from '../src/lib/clock';
 import { runScheduler } from '../src/jobs/scheduler';
 import { workspaceTables } from '../src/privacy/privacy';
-import { ONBOARDING_QUESTIONS } from '../src/copy';
+import { onboardingQuestions } from '../src/copy';
 
 let h: Harness;
 afterEach(async () => { await h?.close(); });
@@ -21,7 +21,7 @@ describe('onboarding and commands', () => {
     for (const a of ['Laddoo', 'Agra families', 'seedha', 'guaranteed', 'Hinglish']) await h.say(P.owner, a);
     expect(h.last(P.owner)).toMatch(/Profile save ho gaya/);
     const prof = (await h.sys(`SELECT answers FROM profiles WHERE workspace_id=$1`, [h.ws]))[0].answers;
-    expect(Object.keys(prof)).toHaveLength(ONBOARDING_QUESTIONS.length);
+    expect(Object.keys(prof)).toHaveLength(onboardingQuestions('business').length);
     expect(prof.business).toBe('Mithai ki dukaan');
     const mem = await h.sys(`SELECT kind, source FROM memory_items WHERE workspace_id=$1`, [h.ws]);
     expect(mem.length).toBe(6);

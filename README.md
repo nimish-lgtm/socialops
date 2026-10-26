@@ -23,7 +23,7 @@ and watch tasks, approvals, the ledger, posts, jobs and the audit log update. Fa
 time out, reject, never go live, expire tokens, or make the model return junk.
 
 ```sh
-npm test                      # 86 tests: fault matrix, RLS, ledger, HTTP, commands, scheduler, cost, adapters
+npm test                      # 109 tests (+14 listed gaps): goal journeys, fault matrix, RLS, ledger, HTTP, commands, cost, adapters
 npm run demo                  # scripted conversation printed to the terminal
 npm run eval                  # intent + caption eval sets against the configured model
 npm run doctor                # checks configuration for MODE (and the WhatsApp token in hybrid/live)

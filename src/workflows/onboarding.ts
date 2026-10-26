@@ -1,9 +1,9 @@
 import type { Workflow } from '../core/engine';
-import { copy, ONBOARDING_QUESTIONS } from '../copy';
+import { copy, onboardingQuestions } from '../copy';
 import { newId } from '../lib/ids';
 import { awaitAnswer, clearAwait } from './helpers';
 
-const MEMORY_KIND: Record<string, string> = { business: 'business', offer: 'offer', audience: 'audience', tone: 'tone', banned: 'banned_claim', language: 'language' };
+const MEMORY_KIND: Record<string, string> = { business: 'business', offer: 'offer', audience: 'audience', tone: 'tone', banned: 'banned_claim', language: 'language', about: 'fact', goal: 'fact', niche: 'fact' };
 
 /** Six questions, one per message, resumable: each answer is stored before the next question is asked. */
 export const onboardingWorkflow: Workflow = {
@@ -13,16 +13,17 @@ export const onboardingWorkflow: Workflow = {
     asking: {
       on: { answer: 'asking', finish: 'done', cancel: 'cancelled' },
       async enter(ctx) {
+        const questions = onboardingQuestions(ctx.ws.kind);
         const answers = { ...(ctx.task.data.answers ?? {}) };
         let step = ctx.task.data.step ?? 0;
         if (ctx.event === 'answer') {
-          const q = ONBOARDING_QUESTIONS[step];
+          const q = questions[step];
           if (q) answers[q.key] = String(ctx.payload.text ?? '').trim().slice(0, 500);
           step += 1;
           await ctx.tx.q(`INSERT INTO profiles(workspace_id, answers, step) VALUES($1,$2,$3) ON CONFLICT (workspace_id) DO UPDATE SET answers=excluded.answers, step=excluded.step`, [ctx.ws.id, answers, step]);
         }
         ctx.set({ answers, step });
-        const next = ONBOARDING_QUESTIONS[step];
+        const next = questions[step];
         if (!next) return ctx.emit('finish');
         const to = ctx.task.requested_by!;
         await awaitAnswer(ctx.tx, to, ctx.task.id, 'answer');

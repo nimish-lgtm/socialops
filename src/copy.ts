@@ -1,13 +1,34 @@
 /** Every user-facing string lives here so wording can be reviewed and localized in one place. */
 
-export const ONBOARDING_QUESTIONS = [
-  { key: 'business', ask: 'Namaste! Shuru karne se pehle 6 chhote sawaal. 1) Aapka kaam/business kya hai?' },
-  { key: 'offer', ask: '2) Aap kya bechte ya share karte hain? (products, services, ya content)' },
-  { key: 'audience', ask: '3) Aapke customers ya followers kaun hain? (age, shehar, interest)' },
-  { key: 'tone', ask: '4) Posts ka tone kaisa ho? (jaise: seedha, mazedaar, professional)' },
-  { key: 'banned', ask: '5) Kya koi baat kabhi nahi likhni? (jaise "guaranteed result"). Nahi hai to "kuch nahi" likhein.' },
+const INTRO = 'Namaste! Shuru karne se pehle 6 chhote sawaal. ';
+const TAIL = [
+  { key: 'tone', ask: '4) Captions ka tone kaisa ho? (jaise: pyaar bhara, mazedaar, seedha, professional)' },
+  { key: 'banned', ask: '5) Kya kabhi nahi likhna ya post karna? (jaise "guaranteed", bachchon ke naam, ghar ka pata). Nahi hai to "kuch nahi" likhein.' },
   { key: 'language', ask: '6) Captions kis bhasha mein? (Hinglish, Hindi, English)' },
-] as const;
+];
+
+/** Onboarding follows the person's own goals: memories for a person, audience for a creator, customers for a business. */
+export const ONBOARDING_BY_KIND: Record<string, Array<{ key: string; ask: string }>> = {
+  personal: [
+    { key: 'about', ask: INTRO + '1) Aap kya share karna chahte hain? (yaadein, family, travel, hobbies)' },
+    { key: 'audience', ask: '2) Aapki posts kaun dekhega? (family, dost, sab log)' },
+    { key: 'goal', ask: '3) Aapke liye sabse zaroori kya hai? (yaadein sambhalna, dosto se jude rehna, apni pehchaan dikhana)' },
+    ...TAIL,
+  ],
+  creator: [
+    { key: 'niche', ask: INTRO + '1) Aap kis cheez par content banate hain? (jaise food, comedy, fitness, padhai)' },
+    { key: 'audience', ask: '2) Aapke followers kaun hain, ya kaun hone chahiye?' },
+    { key: 'goal', ask: '3) Abhi sabse bada goal kya hai? (followers badhana, regular posting, brand deals)' },
+    ...TAIL,
+  ],
+  business: [
+    { key: 'business', ask: INTRO + '1) Aapka kaam/business kya hai?' },
+    { key: 'offer', ask: '2) Aap kya bechte hain? (products ya services)' },
+    { key: 'audience', ask: '3) Aapke customers kaun hain? (age, shehar, kya dhoondte hain)' },
+    ...TAIL,
+  ],
+};
+export const onboardingQuestions = (kind: string) => ONBOARDING_BY_KIND[kind] ?? ONBOARDING_BY_KIND.business!;
 
 export const copy = {
   unknownSender: 'Ye number kisi workspace se juda nahi hai. Apne account owner se access maangein.',

@@ -24,7 +24,7 @@ export const P = { owner: '919000000001', editor: '919000000002', viewer: '91900
 
 export interface HarnessOpts {
   kind?: 'personal' | 'creator' | 'business';
-  account?: 'ig_pro' | 'ig_personal' | 'fb_page' | 'none';
+  account?: 'ig_pro' | 'ig_personal' | 'fb_page' | 'fb_profile' | 'none';
   onboarded?: boolean;
   env?: Record<string, string>;
   llm?: LlmPort;
@@ -60,7 +60,7 @@ export async function harness(o: HarnessOpts = {}) {
     }
     const a = o.account ?? 'ig_pro';
     if (a !== 'none') {
-      const spec = a === 'ig_pro' ? ['instagram', 'account', 'professional'] : a === 'ig_personal' ? ['instagram', 'account', 'personal'] : ['facebook', 'page', 'page'];
+      const spec = ({ ig_pro: ['instagram', 'account', 'professional'], ig_personal: ['instagram', 'account', 'personal'], fb_page: ['facebook', 'page', 'page'], fb_profile: ['facebook', 'profile', 'personal'] } as Record<string, string[]>)[a]!;
       const r = await connectAccount(tx, { workspaceId: ws, platform: spec[0]!, surface: spec[1]!, accountType: spec[2]!, externalId: 'ext_' + a, label: '@shop' });
       accountId = r.id;
       await d.credentials.store(tx, { workspaceId: ws, accountId: r.id, provider: spec[0]!, token: 'tok', expiresAt: new Date(clock.now().getTime() + 60 * DAY) });

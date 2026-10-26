@@ -1,6 +1,6 @@
 # Status
 
-Honest state per capability. "Tested" means an automated test with real Postgres and fake external systems.
+Honest state per capability. Goal-level coverage per persona: docs/GOAL-COVERAGE.md. "Tested" means an automated test with real Postgres and fake external systems.
 "Live-verified" means checked against the real platform; nothing is live-verified yet.
 
 | Capability | State | Evidence |

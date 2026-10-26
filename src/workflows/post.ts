@@ -116,7 +116,9 @@ export const postWorkflow: Workflow = {
       on: { api: 'awaiting_approval', assisted: 'awaiting_user_post', unsupported: 'blocked_route' },
       async enter(ctx) {
         const accts = await ctx.tx.q<AccountRow>(`SELECT * FROM accounts WHERE workspace_id=$1 ORDER BY created_at`, [ctx.ws.id]);
-        const acct = accts.find((a) => a.id === ctx.task.data.accountId) ?? accts.find((a) => a.status === 'connected') ?? accts[0];
+        // Prefer an account the system can publish and verify on, then an assisted one; never a disconnected one first.
+        const rank = (a: AccountRow) => (a.status !== 'connected' ? 3 : a.route === 'E' && ctx.deps.social.canPublish(accountRef(a)) ? 0 : a.route === 'A' ? 1 : 2);
+        const acct = accts.find((a) => a.id === ctx.task.data.accountId) ?? [...accts].sort((x, y) => rank(x) - rank(y))[0];
         if (!acct) return ctx.emit('unsupported', { reason: copy.noAccount });
         const cap = capabilityFor(acct.platform, acct.surface, acct.account_type);
         ctx.set({ accountId: acct.id, platform: platformLabel(acct) });
@@ -187,8 +189,8 @@ export const postWorkflow: Workflow = {
       terminal: true,
       async enter(ctx) {
         if (ctx.event === 'confirmed') {
-          await ctx.tx.q(`INSERT INTO posts(id, workspace_id, task_id, account_id, platform, caption, status) VALUES($1,$2,$3,$4,$5,$6,'user_confirmed') ON CONFLICT DO NOTHING`,
-            [newId('post'), ctx.ws.id, ctx.task.id, ctx.task.data.accountId ?? null, ctx.task.data.platform ?? 'unknown', fullCaption(ctx.task.data)]);
+          await ctx.tx.q(`INSERT INTO posts(id, workspace_id, task_id, account_id, platform, caption, status, created_at) VALUES($1,$2,$3,$4,$5,$6,'user_confirmed',$7) ON CONFLICT DO NOTHING`,
+            [newId('post'), ctx.ws.id, ctx.task.id, ctx.task.data.accountId ?? null, ctx.task.data.platform ?? 'unknown', fullCaption(ctx.task.data), ctx.now]);
           if (ctx.payload.by) await ctx.send(ctx.payload.by, { kind: 'text', body: copy.assistedDone }, `assisted_done:${ctx.task.id}`);
           return;
         }

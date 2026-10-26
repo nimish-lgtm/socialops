@@ -197,8 +197,8 @@ async function publish(d: Deps, job: Job): Promise<void> {
   if (rb.caption !== null && rb.caption.trim() !== payload.caption.trim()) { await d.engine.dispatch(ws, taskId, 'escalate', { reason: 'readback_mismatch' }); return; }
   const url = rb.url ?? res.url;
   await d.db.tenant(ws, async (tx) => {
-    await tx.q(`INSERT INTO posts(id, workspace_id, task_id, account_id, platform, external_id, url, caption, status, verified_at)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,'live',$9) ON CONFLICT (task_id, account_id) DO NOTHING`,
+    await tx.q(`INSERT INTO posts(id, workspace_id, task_id, account_id, platform, external_id, url, caption, status, verified_at, created_at)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,'live',$9,$9) ON CONFLICT (task_id, account_id) DO NOTHING`,
       [newId('post'), ws, taskId, acct.id, platformLabel(acct), res.externalId, url, payload.caption, d.clock.now()]);
     await tx.q(`INSERT INTO audit(workspace_id, actor, event, detail) VALUES($1,'system','published',$2)`, [ws, { taskId, externalId: res.externalId, receipt: d.gateway.receipt('social.publish', { key }, res) }]);
     await d.engine.dispatchIn(tx, taskId, 'published', { externalId: res.externalId, url });
