@@ -31,5 +31,5 @@ if (!(await reachable(cfg.databaseUrl))) {
 await ensureRoles(cfg.databaseUrl, cfg.dbRolePassword);
 await createDatabase(cfg.databaseUrl, new URL(cfg.databaseUrl).pathname.slice(1));
 await migrate(cfg.databaseUrl);
-console.log(`Database ready. Open http://localhost:${cfg.port}/sim when you see "listening".`);
+console.log(`Database ready. Open http://127.0.0.1:${cfg.port}/sim when you see "listening".`);
 await import('../src/main');

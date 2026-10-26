@@ -23,7 +23,13 @@ setInterval(() => {
   const minute = d.clock.now().toISOString().slice(0, 16);
   d.db.system((tx) => enqueue(tx, d.clock, 'tick', {}, { dedupeKey: `tick:${minute}` })).catch((e) => d.log.error('tick_enqueue_failed', { error: String(e) }));
 }, 60_000);
-await app.listen({ port: config.port, host: '0.0.0.0' });
+// Dual-stack so "localhost" works on Windows (::1); fall back to IPv4 where IPv6 is unavailable.
+try {
+  await app.listen({ port: config.port, host: '::' });
+} catch (e) {
+  if ((e as { code?: string }).code !== 'EAFNOSUPPORT') throw e;
+  await app.listen({ port: config.port, host: '0.0.0.0' });
+}
 d.log.info('listening', { port: config.port, mode: config.mode, sim: config.mode === 'sim' ? `${config.publicBaseUrl}/sim` : undefined });
 
 const shutdown = async () => { d.queue.stop(); await app.close(); await d.db.close(); process.exit(0); };
