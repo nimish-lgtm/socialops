@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SocialOps Simulator</title>
+<style>
+  :root { --bg:#f4f1ea; --panel:#fff; --ink:#1d1d1b; --muted:#6b6b66; --line:#e2ded4; --me:#d9fdd3; --bot:#fff; --accent:#128c7e; --warn:#b3261e; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, -apple-system, sans-serif; background:var(--bg); color:var(--ink); }
+  header { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:10px 16px; background:var(--accent); color:#fff; }
+  header h1 { font-size:16px; margin:0 12px 0 0; }
+  header select, header button { font:inherit; padding:5px 8px; border-radius:6px; border:0; }
+  main { display:grid; grid-template-columns: minmax(300px, 420px) 1fr; gap:16px; padding:16px; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  .phone { background:#efeae2; border-radius:14px; border:1px solid var(--line); display:flex; flex-direction:column; height:calc(100vh - 110px); min-height:480px; }
+  .who { padding:8px 12px; background:#075e54; color:#fff; border-radius:14px 14px 0 0; display:flex; gap:8px; align-items:center; }
+  .who select { font:inherit; }
+  #chat { flex:1; overflow:auto; padding:12px; display:flex; flex-direction:column; gap:6px; }
+  .msg { max-width:85%; padding:7px 10px; border-radius:8px; white-space:pre-wrap; word-wrap:break-word; box-shadow:0 1px 1px rgba(0,0,0,.08); }
+  .in { align-self:flex-end; background:var(--me); }
+  .out { align-self:flex-start; background:var(--bot); }
+  .btns { display:flex; flex-direction:column; gap:4px; margin-top:6px; }
+  .btns button { background:#fff; border:1px solid var(--line); color:var(--accent); padding:6px; border-radius:6px; cursor:pointer; font:inherit; }
+  .compose { display:flex; gap:6px; padding:8px; border-top:1px solid var(--line); background:#f7f7f7; border-radius:0 0 14px 14px; }
+  .compose input[type=text] { flex:1; padding:8px; border-radius:18px; border:1px solid var(--line); font:inherit; }
+  .compose button, label.file { padding:8px 12px; border-radius:18px; border:0; background:var(--accent); color:#fff; cursor:pointer; font:inherit; }
+  label.file input { display:none; }
+  .panels { display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:12px; align-content:start; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px; overflow:auto; max-height:320px; }
+  .card h3 { margin:0 0 6px; font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+  table { border-collapse:collapse; width:100%; font-size:12px; }
+  td, th { border-bottom:1px solid var(--line); padding:3px 4px; text-align:left; vertical-align:top; }
+  .faults label { display:block; margin:4px 0; }
+  .muted { color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>SocialOps simulator</h1>
+  <select id="kind"><option value="business">business</option><option value="creator">creator</option><option value="personal">personal</option></select>
+  <select id="acct"><option value="ig_pro">Instagram Professional (API)</option><option value="ig_personal">Instagram personal (assisted)</option><option value="none">no account</option></select>
+  <select id="onb"><option value="true">already onboarded</option><option value="false">fresh (onboarding)</option></select>
+  <button id="setup">Reset demo workspace</button>
+  <button id="tick">Run scheduler tick</button>
+  <span class="muted" style="color:#d9f3ee">Nothing real is posted or sent.</span>
+</header>
+<main>
+  <section class="phone">
+    <div class="who">Chatting as
+      <select id="phone">
+        <option value="919000000001">Owner 919000000001</option>
+        <option value="919000000002">Editor 919000000002</option>
+        <option value="919000000003">Viewer 919000000003</option>
+        <option value="919999999999">Stranger 919999999999</option>
+      </select>
+    </div>
+    <div id="chat"></div>
+    <form class="compose" id="compose">
+      <label class="file" title="Send photo or video">📎<input type="file" id="file" accept="image/*,video/*"></label>
+      <input type="text" id="text" placeholder="Message (caption for media)" autocomplete="off">
+      <button>Send</button>
+    </form>
+  </section>
+  <section class="panels">
+    <div class="card faults"><h3>Fault injection</h3>
+      <label>WhatsApp send <select data-f="wa"><option>none</option><option>timeout</option><option>reject</option><option>not_sent</option></select></label>
+      <label>Social platform <select data-f="social"><option>none</option><option>timeout_after_success</option><option>timeout_before_send</option><option>reject</option><option>not_live</option><option>metrics_missing</option><option>token_expired</option></select></label>
+      <label>LLM <select data-f="llm"><option>none</option><option>error</option><option>junk</option></select></label>
+      <div class="muted" id="pp"></div>
+    </div>
+    <div class="card"><h3>Workspace</h3><div id="ws"></div></div>
+    <div class="card"><h3>Tasks</h3><div id="tasks"></div></div>
+    <div class="card"><h3>Approvals</h3><div id="approvals"></div></div>
+    <div class="card"><h3>Ledger (external writes)</h3><div id="ledger"></div></div>
+    <div class="card"><h3>Posts</h3><div id="posts"></div></div>
+    <div class="card"><h3>Pending jobs</h3><div id="jobs"></div></div>
+    <div class="card"><h3>Audit (latest)</h3><div id="audit"></div></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const api = (p, body) => fetch('/sim/api/' + p, body === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
+const esc = (s) => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+function table(rows) {
+  if (!rows || !rows.length) return '<span class="muted">none</span>';
+  const cols = Object.keys(rows[0]);
+  return '<table><tr>' + cols.map(c => '<th>' + esc(c) + '</th>').join('') + '</tr>' + rows.map(r => '<tr>' + cols.map(c => '<td>' + esc(typeof r[c] === 'object' && r[c] !== null ? JSON.stringify(r[c]) : r[c]) + '</td>').join('') + '</tr>').join('') + '</table>';
+}
+let lastChat = '';
+async function refresh() {
+  const s = await api('state?phone=' + $('phone').value);
+  const html = s.chat.map(m => '<div class="msg ' + m.dir + '">' + esc(m.text) + (m.buttons && m.buttons.length ? '<div class="btns">' + m.buttons.map(b => '<button data-id="' + esc(b.id) + '" data-title="' + esc(b.title) + '">' + esc(b.title) + '</button>').join('') + '</div>' : '') + '</div>').join('');
+  if (html !== lastChat) { $('chat').innerHTML = html; $('chat').scrollTop = 1e9; lastChat = html; }
+  const st = s.state;
+  $('ws').innerHTML = st ? table([st.workspace]) + table(st.accounts) + '<div class="muted">AI calls: ' + st.usage.calls + ', estimated cost: ₹' + (st.usage.paise / 100).toFixed(2) + '</div>' : '<span class="muted">Click "Reset demo workspace"</span>';
+  for (const k of ['tasks', 'approvals', 'ledger', 'posts', 'jobs', 'audit']) $(k).innerHTML = st ? table(st[k]) : '';
+  $('pp').textContent = 'Posts on fake platform: ' + (s.platformPosts ?? 0);
+  document.querySelectorAll('[data-f]').forEach(sel => { const v = s.faults && s.faults[sel.dataset.f]; if (v && document.activeElement !== sel) sel.value = v; });
+}
+$('chat').addEventListener('click', async (e) => {
+  const b = e.target.closest('button[data-id]'); if (!b) return;
+  await api('send', { from: $('phone').value, buttonId: b.dataset.id, buttonTitle: b.dataset.title }); refresh();
+});
+$('compose').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = $('file').files[0]; const text = $('text').value;
+  if (f) {
+    const base64 = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(String(fr.result).split(',')[1]); fr.readAsDataURL(f); });
+    await api('send', { from: $('phone').value, media: { base64, mime: f.type || 'application/octet-stream', caption: text || undefined } });
+    $('file').value = '';
+  } else if (text) {
+    await api('send', { from: $('phone').value, text });
+  }
+  $('text').value = ''; refresh();
+});
+$('setup').onclick = async () => { await api('setup', { kind: $('kind').value, account: $('acct').value, onboarded: $('onb').value === 'true' }); lastChat = ''; refresh(); };
+$('tick').onclick = async () => { await api('tick', {}); refresh(); };
+$('phone').onchange = () => { lastChat = ''; refresh(); };
+document.querySelectorAll('[data-f]').forEach(sel => sel.onchange = () => api('faults', { [sel.dataset.f]: sel.value }).then(refresh));
+refresh(); setInterval(refresh, 1500);
+</script>
+</body>
+</html>

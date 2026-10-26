@@ -1,0 +1,9 @@
+{
+  "_note": "Prices used for budget admission and INR reports. Values copied from the SocialOps v3.1 pack (pricing page read 2026-10-25); re-verify at the source before relying on them. null means unpriced: reports show 'unpriced', never zero.",
+  "fx": { "USD_INR": 94.94, "as_of": "2026-10-23", "source": "api.frankfurter.app via v3.1 pack" },
+  "models": {
+    "claude-haiku-5-5": { "usd_per_mtok_in": 0.1, "usd_per_mtok_out": 0.5, "as_of": "2026-10-25", "source": "https://platform.claude.com/docs/en/about-claude/pricing (via v3.1 pack, re-verify)" },
+    "claude-sonnet-5-5": { "usd_per_mtok_in": 2, "usd_per_mtok_out": 10, "as_of": "2026-10-25", "source": "https://platform.claude.com/docs/en/about-claude/pricing (via v3.1 pack, re-verify)" },
+    "fake": { "usd_per_mtok_in": 0, "usd_per_mtok_out": 0, "as_of": "n/a", "source": "test double" }
+  }
+}

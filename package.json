@@ -1,0 +1,36 @@
+{
+  "name": "socialops",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "db:setup": "tsx scripts/db-setup.ts",
+    "migrate": "tsx scripts/migrate.ts",
+    "dev": "MODE=sim tsx src/main.ts",
+    "start": "tsx src/main.ts",
+    "demo": "tsx scripts/demo.ts",
+    "eval": "tsx evals/run.ts",
+    "doctor": "tsx scripts/doctor.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
+    "@fastify/multipart": "^10.1.6",
+    "fastify": "^5.12.7",
+    "pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/pg": "^8.23.1",
+    "fast-check": "^4.10.2",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
+  }
+}
