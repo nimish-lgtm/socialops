@@ -92,7 +92,7 @@ export function registerJobs(d: Deps): void {
     },
   });
 
-  q.on('report', { leaseMs: 120_000, async run(job) { await report(d, job.workspace_id!, String(job.payload.phone)); } });
+  q.on('report', { leaseMs: 120_000, async run(job) { await report(d, job.workspace_id!, String(job.payload.phone), job.id); } });
   q.on('digest', { leaseMs: 120_000, async run(job) { await digest(d, job.workspace_id!); } });
 
   q.on('health', {
@@ -220,7 +220,7 @@ async function metricsFor(d: Deps, ws: string, post: { id: string; external_id: 
   }
 }
 
-async function report(d: Deps, ws: string, phone: string): Promise<void> {
+async function report(d: Deps, ws: string, phone: string, jobId: string): Promise<void> {
   const posts = await d.db.tenant(ws, (tx) => tx.q<{ id: string; external_id: string; account_id: string; caption: string }>(`SELECT id, external_id, account_id, caption FROM posts WHERE status='live' ORDER BY created_at DESC LIMIT 3`));
   let body: string;
   if (!posts.length) body = copy.reportEmpty;
@@ -229,7 +229,7 @@ async function report(d: Deps, ws: string, phone: string): Promise<void> {
     for (const p of posts) lines.push(copy.reportLine(p.caption, await metricsFor(d, ws, p)));
     body = [copy.reportHeader, ...lines, copy.reportFooter].join('\n');
   }
-  await d.db.tenant(ws, (tx) => d.messenger.queue(tx, { workspaceId: ws, to: phone, msg: { kind: 'text', body }, key: `report:${phone}:${d.clock.now().getTime()}` }));
+  await d.db.tenant(ws, (tx) => d.messenger.queue(tx, { workspaceId: ws, to: phone, msg: { kind: 'text', body }, key: `report:${jobId}` }));
 }
 
 async function digest(d: Deps, ws: string): Promise<void> {

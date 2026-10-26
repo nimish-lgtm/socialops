@@ -70,10 +70,10 @@ export async function harness(o: HarnessOpts = {}) {
   if (o.secondWorkspace) ws2 = await createWorkspace(db, { name: 'Other Shop', kind: 'business', ownerPhone: P.owner2 });
 
   let n = 0;
-  const post = async (message: Record<string, unknown>, pnid = config.wa.phoneNumberId) => {
+  const post = async (message: Record<string, unknown>, pnid = config.wa.phoneNumberId, drain = true) => {
     const payload = JSON.stringify({ entry: [{ changes: [{ value: { metadata: { phone_number_id: pnid }, messages: [message] } }] }] });
     const res = await app.inject({ method: 'POST', url: '/webhook', payload, headers: { 'content-type': 'application/json', 'x-hub-signature-256': signBody(payload, config.wa.appSecret) } });
-    await d.queue.drain();
+    if (drain) await d.queue.drain();
     return res;
   };
   const wamid = () => `wamid.t${++n}`;
@@ -82,6 +82,7 @@ export async function harness(o: HarnessOpts = {}) {
     d, app, db, clock, wa, social, llm, inspector, config, ws, ws2, accountId, P,
     say: (from: string, text: string, id = wamid()) => post({ id, from, type: 'text', text: { body: text } }),
     tap: (from: string, buttonId: string, id = wamid()) => post({ id, from, type: 'interactive', interactive: { type: 'button_reply', button_reply: { id: buttonId, title: buttonId } } }),
+    tapNoDrain: (from: string, buttonId: string) => post({ id: wamid(), from, type: 'interactive', interactive: { type: 'button_reply', button_reply: { id: buttonId, title: buttonId } } }, config.wa.phoneNumberId, false),
     media: (from: string, o2: { mime?: string; caption?: string; bytes?: Buffer } = {}) => {
       const mime = o2.mime ?? 'video/mp4';
       const mediaId = wa.addMedia(o2.bytes ?? Buffer.from('fake-media-' + n), mime);

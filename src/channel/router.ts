@@ -64,7 +64,8 @@ async function routeIn(d: Deps, member: Member, m: InMsg): Promise<void> {
     if (cmd === 'cancel_delete') return cancelDelete(d, tx, member, reply);
 
     const conv = await tx.one<{ state: string; context: { taskId?: string; event?: string } }>('SELECT state, context FROM conversations WHERE phone=$1', [member.phone]);
-    if (conv?.state === 'awaiting' && conv.context.taskId && conv.context.event && !cmd) {
+    // While an answer is expected, typed text is that answer (e.g. "DELETE" confirms deletion), except escape words above.
+    if (conv?.state === 'awaiting' && conv.context.taskId && conv.context.event && cmd !== 'status' && cmd !== 'start') {
       const ev = conv.context.event;
       const payload = ev === 'caption' ? { caption: text, by: member.phone } : { text, by: member.phone };
       if (!text) return reply(ev === 'caption' ? copy.askCaption : copy.notUnderstood);
