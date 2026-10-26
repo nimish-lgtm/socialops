@@ -16,7 +16,7 @@ export const inWindow = (last: Date | string | null | undefined, now: Date): boo
  * that caused them, then delivered by a job with a durable dedupe key and the 24h window guard.
  */
 export class Messenger {
-  constructor(private db: Db, private clock: Clock, private wa: WhatsAppPort, private gateway: Gateway, private log: Logger, private simulationBanner: boolean) {}
+  constructor(private db: Db, private clock: Clock, private wa: WhatsAppPort, private gateway: Gateway, private log: Logger) {}
 
   async queue(tx: Tx, m: { workspaceId: string | null; to: string; msg: OutMessage; key: string }): Promise<void> {
     await enqueue(tx, this.clock, 'send', { to: m.to, msg: m.msg, key: m.key, ws: m.workspaceId }, { workspaceId: m.workspaceId, dedupeKey: 'send:' + m.key, maxAttempts: 3 });
@@ -27,7 +27,7 @@ export class Messenger {
     const now = this.clock.now();
     const conv = await this.db.system((tx) => tx.one<{ last_inbound_at: Date | null }>('SELECT last_inbound_at FROM conversations WHERE phone=$1', [to]));
     const kind = msg.kind;
-    if (kind !== 'template' && !inWindow(conv?.last_inbound_at, now)) {
+    if (this.wa.kind !== 'web' && kind !== 'template' && !inWindow(conv?.last_inbound_at, now)) {
       await this.db.system(async (tx) => {
         await tx.q(`INSERT INTO outbound_messages(id, workspace_id, to_phone, kind, status, created_at) VALUES($1,$2,$3,$4,'blocked_window',$5)`, [newId('out'), ws, to, kind, now]);
         await tx.q('UPDATE jobs SET dedupe_key=NULL WHERE id=$1', [job.id]); // a blocked message must stay sendable later
@@ -39,9 +39,8 @@ export class Messenger {
     const claimed = await this.db.system((tx) => tx.q(`INSERT INTO outbound_messages(id, workspace_id, to_phone, kind, dedupe_key, status, created_at)
       VALUES($1,$2,$3,$4,$5,'sending',$6) ON CONFLICT (dedupe_key) DO NOTHING RETURNING id`, [id, ws, to, kind, key, now]));
     if (!claimed.length) return;
-    const out = this.simulationBanner && msg.kind !== 'template' ? { ...msg, body: '[SIMULATION: kuch real post ya spend nahi hota]\n' + msg.body } : msg;
     try {
-      const r = await this.gateway.call('messenger', 'wa.send', { workspaceId: ws }, () => this.wa.send(to, out));
+      const r = await this.gateway.call('messenger', 'wa.send', { workspaceId: ws }, () => this.wa.send(to, msg));
       await this.db.system((tx) => tx.q(`UPDATE outbound_messages SET status='sent', wa_id=$2 WHERE id=$1`, [id, r.waId]));
     } catch (e) {
       const cls = errClass(e);

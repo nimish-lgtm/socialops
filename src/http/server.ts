@@ -12,7 +12,7 @@ import { enqueue } from '../core/queue';
 import { copy } from '../copy';
 import { DAY } from '../lib/clock';
 import { owners, platformLabel } from '../workflows/helpers';
-import { registerSim } from './sim';
+import { registerWebChat } from './webchat';
 
 declare module 'fastify' { interface FastifyRequest { rawBody?: Buffer } }
 
@@ -22,7 +22,7 @@ const html = (title: string, body: string) => `<!doctype html><html><head><meta 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
 export function buildServer(d: Deps): FastifyInstance {
-  const app = Fastify({ logger: false, bodyLimit: d.config.mode === 'sim' ? 20 * 1024 * 1024 : 1024 * 1024 });
+  const app = Fastify({ logger: false, bodyLimit: d.config.mode === 'web' ? 25 * 1024 * 1024 : 1024 * 1024 });
 
   app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req: FastifyRequest, body: Buffer, done) => {
     req.rawBody = body;
@@ -74,9 +74,12 @@ export function buildServer(d: Deps): FastifyInstance {
     const link = await d.links.redeem(t, 'reconnect', d.clock.now());
     if (!link) return reply.code(410).type('text/html').send(html('Expired', '<p>Ye link expire ho gaya. WhatsApp par "connect" likh kar naya link lein.</p>'));
     const state = await d.db.tenant(link.workspaceId, (tx) => d.links.create(tx, { workspaceId: link.workspaceId, kind: 'reconnect', ref: 'state', expiresAt: new Date(d.clock.now().getTime() + 15 * 60_000) }));
-    if (d.config.mode === 'live') return reply.redirect(authorizeUrl(d, state));
+    if (d.config.mode !== 'mock') {
+      if (!d.config.meta.appId || !d.config.meta.appSecret) return reply.code(503).type('text/html').send(html('Not set up', '<p>Facebook/Instagram connect abhi set up nahi hai (Meta app missing). Admin se baat karein.</p>'));
+      return reply.redirect(authorizeUrl(d, state));
+    }
+    // Test-only provider: exists in MODE=mock (automated tests) and nowhere else.
     return reply.type('text/html').send(html('Connect account', `<h2>Account jodein (test provider)</h2>
-<p>Ye ${esc(d.config.mode)} mode hai: koi real account nahi juda jayega.</p>
 <form method="post" action="/connect/fake"><input type="hidden" name="state" value="${esc(state)}">
 <p><label>Naam/handle <input name="label" value="@demo_shop"></label></p>
 <button name="kind" value="ig_pro">Instagram Professional</button>
@@ -86,7 +89,7 @@ export function buildServer(d: Deps): FastifyInstance {
   });
 
   app.post('/connect/fake', async (req, reply) => {
-    if (d.config.mode === 'live') return reply.code(404).send();
+    if (d.config.mode !== 'mock') return reply.code(404).send();
     const b = req.body as Record<string, string>;
     const link = await d.links.redeem(String(b.state ?? ''), 'reconnect', d.clock.now());
     if (!link || link.ref !== 'state') return reply.code(410).type('text/html').send(html('Expired', '<p>Session expire ho gaya. Dobara "connect" likhein.</p>'));
@@ -175,7 +178,7 @@ export function buildServer(d: Deps): FastifyInstance {
     });
   });
 
-  if (d.config.mode === 'sim' || d.config.mode === 'mock') registerSim(app, d);
+  registerWebChat(app, d);
   return app;
 }
 

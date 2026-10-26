@@ -11,14 +11,22 @@ import { copy, onboardingQuestions } from '../copy';
 import type { ChatTurn } from '../skills/skills';
 import { accountRef, owners, platformLabel, publishPayload, type AccountRow } from '../workflows/helpers';
 import { exportWorkspace } from '../privacy/privacy';
+import { lookupFacebookPage, lookupInstagram, lookupYouTube, parseSocialLink } from '../lookup/lookup';
+import type { AccountInfo } from '../ports';
 import { runScheduler } from './scheduler';
 
 const loadTask = (d: Deps, ws: string, id: string) => d.db.tenant(ws, (tx) => tx.one<TaskRow>('SELECT * FROM tasks WHERE id=$1', [id]));
 
 /** What the platforms reported about the workspace's connected accounts, for the model's context (data, not instructions). */
 export async function connectedAccountsInfo(d: Deps, ws: string): Promise<Array<Record<string, unknown>>> {
-  const rows = await d.db.tenant(ws, (tx) => tx.q<{ platform: string; label: string | null; info: Record<string, unknown> | null }>(`SELECT platform, label, info FROM accounts WHERE status='connected' AND info IS NOT NULL`));
-  return rows.map((r) => ({ platform: r.platform, label: r.label, ...r.info }));
+  return d.db.tenant(ws, async (tx) => {
+    const rows = await tx.q<{ platform: string; label: string | null; info: Record<string, unknown> | null }>(`SELECT platform, label, info FROM accounts WHERE status='connected' AND info IS NOT NULL`);
+    const looked = await tx.q<{ platform: string; handle: string; info: Record<string, unknown> }>(`SELECT DISTINCT ON (platform, handle) platform, handle, info FROM page_lookups ORDER BY platform, handle, looked_up_at DESC LIMIT 5`);
+    return [
+      ...rows.map((r) => ({ relation: 'connected (owner logged in)', platform: r.platform, label: r.label, ...r.info })),
+      ...looked.map((r) => ({ relation: 'link shared by the user (public data)', platform: r.platform, handle: r.handle, ...r.info })),
+    ];
+  });
 }
 
 /** Fixed-question onboarding used without a model (or if the model fails): fills the next missing field. */
@@ -150,6 +158,7 @@ export function registerJobs(d: Deps): void {
         const ph = (await tx.q<{ phone: string }>(`SELECT phone FROM members WHERE workspace_id=$1 AND role='owner'`, [ws])).map((r) => r.phone);
         await tx.q(`UPDATE audit SET workspace_id=$2, detail='{}' WHERE workspace_id=$1`, [ws, 'erased:' + sha256(ws).slice(0, 12)]);
         await tx.q(`UPDATE conversations SET workspace_id=NULL, state='idle', context='{}', history='[]' WHERE workspace_id=$1`, [ws]);
+        await tx.q(`DELETE FROM webchat_messages WHERE phone = ANY(SELECT phone FROM members WHERE workspace_id=$1)`, [ws]);
         await tx.q(`DELETE FROM workspaces WHERE id=$1`, [ws]);
         for (const p of ph) await d.messenger.queue(tx, { workspaceId: null, to: p, msg: { kind: 'text', body: copy.deleted }, key: `erased:${ws}:${p}` });
         await tx.q(`INSERT INTO audit(workspace_id, actor, event, detail) VALUES(NULL,'system','workspace_erased','{}')`);
@@ -176,6 +185,41 @@ export function registerJobs(d: Deps): void {
         const summary = [info.name, info.username && '@' + info.username, info.category, info.bio, info.followers !== null && `${info.followers} followers`].filter(Boolean).join(' · ');
         if (summary) await tx.q(`INSERT INTO memory_items(id, workspace_id, account_id, kind, body, source, created_at) VALUES($1,$2,$3,'fact',$4,'platform',$5)`, [newId('mem'), ws, acct.id, summary.slice(0, 2000), d.clock.now()]);
         for (const o of await owners(tx, ws)) await d.messenger.queue(tx, { workspaceId: ws, to: o, msg: { kind: 'text', body: copy.accountInfo(info) }, key: `acctinfo:${acct.id}:${job.id}:${o}` });
+      });
+    },
+  });
+
+  q.on('link_lookup', {
+    leaseMs: 60_000,
+    async run(job) {
+      const ws = job.workspace_id!;
+      const phone = String(job.payload.phone);
+      const link = parseSocialLink(String(job.payload.url));
+      if (!link || link.platform === 'unsupported' || link.platform === 'facebook_share') return;
+      const name = ({ instagram: 'Instagram', facebook: 'Facebook Page', youtube: 'YouTube' } as Record<string, string>)[link.platform]!;
+      const say = (body: string, k: string) => d.db.tenant(ws, (tx) => d.messenger.queue(tx, { workspaceId: ws, to: phone, msg: { kind: 'text', body }, key: `lookup:${job.id}:${k}` }));
+      const cfg = { graphVersion: d.config.meta.version, igUserId: d.config.lookup.igUserId, igToken: d.config.lookup.token, appId: d.config.meta.appId, appSecret: d.config.meta.appSecret, youtubeKey: d.config.lookup.youtubeKey };
+      let info: AccountInfo;
+      try {
+        info = await d.gateway.call('analyst', 'lookup.public', { workspaceId: ws }, () =>
+          link.platform === 'instagram' ? lookupInstagram(cfg, d.lookupFetch, link.handle)
+          : link.platform === 'facebook' ? lookupFacebookPage(cfg, d.lookupFetch, link.handle)
+          : lookupYouTube(cfg, d.lookupFetch, link.handle, link.kind));
+      } catch (e) {
+        const code = (e as AppError).code;
+        if (code === 'lookup_not_configured') return say(copy.lookupNotConfigured(name), 'cfg');
+        if (code === 'lookup_needs_approval') return say(copy.lookupFbApproval, 'fb');
+        if (code === 'lookup_not_public' || (e as AppError).cls === 'definitive') return say(copy.lookupNotPublic(name, link.handle), 'np');
+        throw e;
+      }
+      await d.db.tenant(ws, async (tx) => {
+        await tx.q(`INSERT INTO page_lookups(id, workspace_id, platform, handle, url, info, looked_up_at) VALUES($1,$2,$3,$4,$5,$6,$7)`, [newId('look'), ws, link.platform, link.handle, link.url, info, d.clock.now()]);
+        const summary = [info.name, info.username && '@' + String(info.username).replace(/^@/, ''), info.category, info.bio, info.followers !== null && `${info.followers} followers`].filter(Boolean).join(' · ');
+        // Public profile text is written by anyone, so it is stored as untrusted data, never as a rule.
+        if (summary) await tx.q(`INSERT INTO memory_items(id, workspace_id, kind, body, source, created_at) VALUES($1,$2,'fact',$3,'external_untrusted',$4)`, [newId('mem'), ws, `${name}: ${summary}`.slice(0, 2000), d.clock.now()]);
+        await d.messenger.queue(tx, { workspaceId: ws, to: phone, msg: { kind: 'text', body: copy.accountInfo(info) + (link.platform !== 'youtube' ? '\n' + copy.connectHint : '') }, key: `lookup:${job.id}:ok` });
+        const onb = await tx.one<{ id: string }>(`SELECT id FROM tasks WHERE workflow='onboarding' AND state='asking' AND requested_by=$1`, [phone]);
+        if (onb) await d.engine.dispatchIn(tx, onb.id, 'answer', { text: `(Maine apna ${name} share kiya: ${link.handle}. Uski public info aapke paas hai.)` });
       });
     },
   });

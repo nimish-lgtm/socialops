@@ -1,14 +1,27 @@
-// One-command local start for the simulator, on Windows, macOS or Linux.
+// One-command start of the real web chat (MODE=web) on Windows, macOS or Linux.
 // Uses DATABASE_URL if a Postgres answers there; otherwise starts a built-in Postgres stored in ./data/pg.
 import fs from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import pg from 'pg';
 import EmbeddedPostgres from 'embedded-postgres';
-import { loadConfig, loadEnvFile } from '../src/config';
+import { configProblems, loadConfig, loadEnvFile } from '../src/config';
 import { createDatabase, dropDatabase, ensureRoles, migrate } from '../src/db/migrate';
 
-process.env.MODE ??= 'sim';
+process.env.MODE ??= 'web';
+// Server secrets are generated once into .env; the Claude key and budget must come from the user.
+const envText = fs.existsSync('.env') ? fs.readFileSync('.env', 'utf8') : '';
+const gen: Record<string, string> = { CREDENTIAL_KEY: randomBytes(32).toString('hex'), LINK_SECRET: randomBytes(24).toString('hex'), OPERATOR_TOKEN: randomBytes(24).toString('hex') };
+const missing = Object.keys(gen).filter((k) => !new RegExp(`^\\s*${k}\\s*=\\s*\\S`, 'm').test(envText) && !process.env[k]);
+if (missing.length) {
+  fs.appendFileSync('.env', (envText && !envText.endsWith('\n') ? '\n' : '') + missing.map((k) => `${k}=${gen[k]}`).join('\n') + '\n');
+  console.log('Generated ' + missing.join(', ') + ' into .env (keep that file private).');
+}
 loadEnvFile();
+{
+  const p = configProblems(loadConfig());
+  if (p.length) { console.error('Cannot start:\n- ' + p.join('\n- ') + '\nAdd these to .env and run npm run dev again.'); process.exit(1); }
+}
 const EMBEDDED_PORT = 54329;
 
 async function reachable(url: string): Promise<boolean> {
@@ -49,10 +62,10 @@ if (dbEnc !== 'UTF8') {
     process.exit(1);
   }
   // Only the app database is recreated (as UTF8); cluster files are never deleted, so Windows file locks do not matter.
-  console.log(`Demo database used ${dbEnc}; recreating it as UTF8 (demo data is reset)...`);
+  console.log(`Local database used ${dbEnc}; recreating it as UTF8 (its data is reset)...`);
   await dropDatabase(cfg.databaseUrl, dbName);
   await createDatabase(cfg.databaseUrl, dbName);
 }
 await migrate(cfg.databaseUrl);
-console.log(`Database ready. Open http://127.0.0.1:${cfg.port}/sim when you see "listening".`);
+console.log(`Database ready. Open http://127.0.0.1:${cfg.port}/ when you see "listening".`);
 await import('../src/main');

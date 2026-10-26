@@ -1,15 +1,23 @@
 # Runbook
 
-## Going live, step by step
+## Web chat (MODE=web)
+1. `.env`: `ANTHROPIC_API_KEY`, `AI_DAILY_BUDGET_INR`; optional lookup and Meta credentials (see README table).
+2. `npm run dev`, open `http://localhost:8080/`. For other people or for publishing, expose it with
+   `cloudflared tunnel --url http://localhost:8080` and set `PUBLIC_BASE_URL` to the tunnel's https URL.
+3. Each new browser signs up as the owner of its own workspace; `SIGNUPS_PER_DAY` caps abuse. Set `SELF_SIGNUP=false`
+   to allow only workspaces created through the operator API.
+
+## Going live on WhatsApp, step by step
 1. `cp .env.example .env`; set strong `DB_ROLE_PASSWORD`, `CREDENTIAL_KEY`, `LINK_SECRET`, `OPERATOR_TOKEN`.
 2. `npm run db:setup` against your Postgres (admin URL in `DATABASE_URL`).
 3. Meta for Developers: create a Business app, add WhatsApp, use the test number, add your phone as a recipient.
-   Fill `WA_*`. Set `MODE=hybrid`, `LLM_PROVIDER=anthropic`, `ANTHROPIC_API_KEY`, `AI_DAILY_BUDGET_INR` (e.g. 50).
+   Fill `WA_*`. Set `MODE=live`, `LLM_PROVIDER=anthropic`, `ANTHROPIC_API_KEY`, `AI_DAILY_BUDGET_INR` (e.g. 50),
+   and keep `META_PUBLISH_ENABLED=false` for now.
 4. `npm run doctor`, then `npm start`; expose with `cloudflared tunnel --url http://localhost:8080`.
 5. In the Meta app, set the webhook to `https://<tunnel>/webhook` with `WA_VERIFY_TOKEN`; subscribe to `messages`.
 6. Create your workspace: `curl -XPOST localhost:8080/ops/workspaces -H "authorization: Bearer $OPERATOR_TOKEN" -H 'content-type: application/json' -d '{"name":"My Shop","kind":"business","ownerPhone":"91XXXXXXXXXX"}'`
-7. Run live checks L1–L4 and L8 from your phone (everything replies with [SIMULATION]; nothing is published).
-8. For publishing: `MODE=live`, set `META_APP_ID/SECRET`, add the redirect `https://<host>/connect/meta/callback`,
+7. Run live checks L1–L4 and L8 from your phone (nothing is published while META_PUBLISH_ENABLED=false).
+8. For publishing: set `META_APP_ID/SECRET`, add the redirect `https://<host>/connect/meta/callback`,
    send "connect" in WhatsApp, log in with an account that manages your Page and linked Instagram professional account.
 9. Set `META_PUBLISH_ENABLED=true` only for check L5 on your own account; confirm one post, readback, no duplicate.
 

@@ -114,10 +114,12 @@ describe('workflows and configuration', () => {
     expect(capabilityFor('tiktok', 'account', 'any').route).toBe('N');
     expect(Object.values(MATRIX).every((r) => r.verified === false)).toBe(true);
   });
-  it('T-UNIT-14 live and hybrid refuse unsafe adapters and dev secrets', () => {
-    const fake = { kind: 'fake' } as any, live = { kind: 'live' } as any;
+  it('T-UNIT-14 web and live refuse fake adapters and dev secrets', () => {
+    const fake = { kind: 'fake' } as any, live = { kind: 'live' } as any, web = { kind: 'web' } as any;
     expect(() => preflight('live', { wa: live, social: fake, llm: live })).toThrow(/social/);
-    expect(() => preflight('hybrid', { wa: live, social: live, llm: live })).toThrow(/social must be fake/);
+    expect(() => preflight('web', { wa: fake, social: live, llm: live })).toThrow();
+    expect(() => preflight('web', { wa: web, social: live, llm: fake })).toThrow();
+    expect(() => preflight('web', { wa: web, social: live, llm: live })).not.toThrow();
     expect(() => preflight('mock', { wa: live, social: fake, llm: fake })).toThrow();
     expect(() => preflight('live', { wa: live, social: live, llm: live })).not.toThrow();
     const p = configProblems(loadConfig({ MODE: 'live' }));
@@ -125,6 +127,10 @@ describe('workflows and configuration', () => {
     expect(p.join('\n')).toMatch(/WA_ACCESS_TOKEN/);
     expect(p.join('\n')).toMatch(/LLM_PROVIDER=anthropic/);
     expect(configProblems(loadConfig({ MODE: 'mock' }))).toEqual([]);
+    const w = configProblems(loadConfig({ MODE: 'web' })).join('\n');
+    expect(w).toMatch(/LINK_SECRET/);
+    expect(w).toMatch(/AI_DAILY_BUDGET_INR/);
+    expect(w).not.toMatch(/WA_ACCESS_TOKEN/);
   });
   it('T-UNIT-15 the 24h window and INR cost math', () => {
     const now = new Date('2026-11-02T10:00:00Z');

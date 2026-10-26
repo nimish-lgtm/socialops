@@ -7,9 +7,10 @@ Honest state per capability. Goal-level coverage per persona: docs/GOAL-COVERAGE
 |---|---|---|
 | Webhook signature, size limit, handshake, foreign number filter | Tested | F17, F18, F19, T-HTTP-01 |
 | Inbound dedupe, unknown sender once/day, rate limit 30/min | Tested | F1, F20, F21 |
+| Self sign-up for first-time users (own workspace as owner, daily cap) | Tested | T-SIGNUP-01, T-SIGNUP-02 |
 | Roles: owner/editor/viewer; owner-only approvals and commands | Tested | F6, T-CMD-03, T-CMD-04 |
 | Onboarding (6 questions, resumable) → profile + owner memory | Tested | T-CMD-01 |
-| Media ingest, checksum storage, ffprobe QC, reshoot on bad file | Tested (ffprobe run for real in sim) | T-UNIT-10, manual sim run |
+| Media ingest, checksum storage, ffprobe QC, reshoot on bad file | Tested | T-UNIT-10 |
 | Caption skill (cache, budget, usage, schema validation, retry) | Tested with fake model | T-COST-01, F22 |
 | Claim and banned-phrase highlighting on the approval card | Tested | T-UNIT-08, F29 |
 | Consent question for every workspace kind; re-check at publish | Tested | F3, F4 |
@@ -22,11 +23,12 @@ Honest state per capability. Goal-level coverage per persona: docs/GOAL-COVERAGE
 | Pause/resume, forget, export (one-time link), delete with cooling period | Tested | T-CMD-06..08, F30, F31 |
 | RLS isolation and coverage; append-only audit for app role | Tested | F32, T-DB-01..03 |
 | Operator API (stuck tasks, retry with new approval, replay dead jobs, pause) | Tested | T-HTTP-03..05 |
-| Browser simulator | Manually run (screenshot in session) | — |
+| Web chat (MODE=web): signed session cookie, text, buttons, photo/video upload | Tested; booted for real in web mode | T-WEB-01, T-WEB-02 |
 | WhatsApp Cloud API adapter | Code + mocked-network tests only | T-ADP-01, T-ADP-02 |
 | Meta Instagram/Facebook publish adapter | Code + mocked-network tests only; OFF by default | T-ADP-03..05 |
 | Meta login (OAuth) for Pages + linked Instagram | Code only, untested | — |
-| Page link → one-tap connect → page info (name, bio, followers, recent posts) via official API; never scraped | Tested with demo provider; Meta fields UNVERIFIED | L-01..L-03 |
+| "connect" → account info (name, bio, followers, recent posts) via official API | Tested with fake platform; Meta fields UNVERIFIED | L-01..L-03 |
+| Pasted link → public info: Instagram Business Discovery, Facebook Page metadata, YouTube Data API; never scraped | Tested with mocked network; real APIs UNVERIFIED (need credentials) | T-LINK-01..07 |
 | Conversational onboarding and chat with Claude (history, kind switch with consent) | Tested with a stubbed model; real Claude used manually by the owner | O-01, O-02, T-CHAT-01..04 |
 | Claude adapter | Code only; needs key and budget | eval runner |
 

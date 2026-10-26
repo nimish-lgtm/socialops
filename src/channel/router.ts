@@ -9,6 +9,9 @@ import { HOUR } from '../lib/clock';
 import { CONSENT_EVENTS } from '../workflows/helpers';
 import { renderCard } from '../workflows/post';
 import { connectedAccountsInfo } from '../jobs/handlers';
+import { LINK_PATTERN, parseSocialLink } from '../lookup/lookup';
+
+const PLATFORM_NAME: Record<string, string> = { instagram: 'Instagram', facebook: 'Facebook Page', youtube: 'YouTube' };
 import type { ChatTurn } from '../skills/skills';
 
 const HISTORY_TURNS = 8;
@@ -65,12 +68,15 @@ async function routeIn(d: Deps, member: Member, m: InMsg): Promise<void> {
     if (m.type === 'other') return reply(copy.notUnderstood);
     if (looksLikeSecret(text)) return reply(copy.secretWarning);
 
-    // A Facebook/Instagram link: never scraped; the owner gets a one-tap official connect link instead.
-    const pageLink = text.match(/https?:\/\/(?:www\.|m\.|web\.)?(?:facebook\.com|fb\.com|fb\.me|instagram\.com)\/\S*/i);
-    if (pageLink) {
-      if (member.role !== 'owner') return reply(copy.pageLinkNotOwner);
-      const token = await d.links.create(tx, { workspaceId: ws, kind: 'reconnect', ref: 'connect', expiresAt: new Date(d.clock.now().getTime() + HOUR) });
-      return reply(copy.pageLinkSeen(d.links.url('/connect/start', token)));
+    // A social profile link: looked up through official APIs only (never scraped), in a job.
+    const link = text.match(LINK_PATTERN);
+    const social = link ? parseSocialLink(link[0]) : null;
+    if (social) {
+      if (member.role === 'viewer') return reply(copy.viewerOnly);
+      if (social.platform === 'unsupported') return reply(copy.lookupUnsupported(social.name));
+      if (social.platform === 'facebook_share') return reply(copy.lookupShareLink);
+      await enqueue(tx, d.clock, 'link_lookup', { url: social.url, phone: member.phone }, { workspaceId: ws, dedupeKey: `lookup:${ws}:${social.url}:${d.clock.now().toISOString().slice(0, 13)}` });
+      return reply(copy.lookingUp(PLATFORM_NAME[social.platform] ?? 'Link'));
     }
 
     // Escape words always work, even while the bot is waiting for an answer.
@@ -107,7 +113,7 @@ async function routeIn(d: Deps, member: Member, m: InMsg): Promise<void> {
       return command(d, tx, w, member, c, reply);
     }
     if (said) return reply(said);
-    return reply(d.llm.kind === 'fake' ? copy.demoMode : copy.notUnderstood);
+    return reply(copy.notUnderstood);
   });
 }
 

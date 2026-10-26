@@ -7,6 +7,8 @@ Status: plan, nothing built yet. Repo: `nimish-lgtm/socialops` (empty). Author's
 ## 0. What "complete system to test" means
 
 Done = one command brings up the full system on a laptop, and every product behaviour can be exercised **without any real account**, then switched to real WhatsApp / Instagram / Claude one adapter at a time.
+> Superseded: `sim` and `hybrid` were removed. Modes are now `mock` (tests), `web` (browser chat, real APIs) and `live` (WhatsApp). See README.
+
 
 | Mode | WhatsApp | Social (IG/FB) | LLM | Purpose |
 |---|---|---|---|---|

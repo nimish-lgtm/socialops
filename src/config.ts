@@ -1,11 +1,17 @@
 import fs from 'node:fs';
 import { z } from 'zod';
 
-export const MODES = ['mock', 'sim', 'hybrid', 'live'] as const;
+/** mock = automated tests only (fakes). web = real everything, chat in the browser. live = real everything over WhatsApp. */
+export const MODES = ['mock', 'web', 'live'] as const;
 export type Mode = (typeof MODES)[number];
 
 const Env = z.object({
   MODE: z.enum(MODES).default('mock'),
+  SELF_SIGNUP: z.enum(['true', 'false']).optional(),
+  SIGNUPS_PER_DAY: z.coerce.number().int().nonnegative().default(50),
+  META_LOOKUP_IG_USER_ID: z.string().default(''),
+  META_LOOKUP_TOKEN: z.string().default(''),
+  YOUTUBE_API_KEY: z.string().default(''),
   PORT: z.coerce.number().int().positive().default(8080),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   DATABASE_URL: z.string().default('postgres://socialops_owner:dev@localhost:5432/socialops_dev'),
@@ -50,6 +56,9 @@ export interface Config {
   aiDailyBudgetMinor: number | null;
   approvalTtlHours: number;
   deleteCoolingDays: number;
+  selfSignup: boolean;
+  signupsPerDay: number;
+  lookup: { igUserId: string; token: string; youtubeKey: string };
 }
 
 const DEV_KEY = 'd'.repeat(64);
@@ -57,7 +66,7 @@ const DEV_KEY = 'd'.repeat(64);
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
   const e = Env.parse(env);
   const budget = e.AI_DAILY_BUDGET_INR.trim() === '' ? null : Math.round(Number(e.AI_DAILY_BUDGET_INR) * 100);
-  const dev = e.MODE === 'mock' || e.MODE === 'sim';
+  const dev = e.MODE === 'mock';
   return {
     mode: e.MODE,
     port: e.PORT,
@@ -75,32 +84,47 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     aiDailyBudgetMinor: budget !== null && Number.isFinite(budget) && budget >= 0 ? budget : null,
     approvalTtlHours: e.APPROVAL_TTL_HOURS,
     deleteCoolingDays: e.DELETE_COOLING_DAYS,
+    selfSignup: e.SELF_SIGNUP ? e.SELF_SIGNUP === 'true' : e.MODE === 'web',
+    signupsPerDay: e.SIGNUPS_PER_DAY,
+    lookup: { igUserId: e.META_LOOKUP_IG_USER_ID, token: e.META_LOOKUP_TOKEN, youtubeKey: e.YOUTUBE_API_KEY },
   };
 }
 
-/** Reads KEY=VALUE lines from a local .env without overriding real environment variables. */
+/** Reads KEY=VALUE lines from a local .env without overriding real environment variables; empty values are skipped. */
 export function loadEnvFile(file = '.env'): void {
   if (!fs.existsSync(file)) return;
   for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
     const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
-    if (m && m[1] && process.env[m[1]] === undefined) process.env[m[1]] = (m[2] ?? '').replace(/^"|"$/g, '');
+    const v = (m?.[2] ?? '').replace(/^"|"$/g, '');
+    if (m && m[1] && v !== '' && process.env[m[1]] === undefined) process.env[m[1]] = v;
   }
 }
 
 /** Secrets and settings each mode needs before it may start. Returns the list of problems. */
 export function configProblems(c: Config): string[] {
   const p: string[] = [];
-  const realWa = c.mode === 'hybrid' || c.mode === 'live';
+  if (c.mode === 'mock') return p;
   if (!/^[0-9a-f]{64}$/i.test(c.credentialKey)) p.push('CREDENTIAL_KEY must be 64 hex chars');
   if (!c.linkSecret) p.push('LINK_SECRET is required');
   if (!c.operatorToken) p.push('OPERATOR_TOKEN is required');
-  if (realWa) {
-    for (const [k, v] of Object.entries({ WA_PHONE_NUMBER_ID: c.wa.phoneNumberId, WA_ACCESS_TOKEN: c.wa.token, WA_APP_SECRET: c.wa.appSecret, WA_VERIFY_TOKEN: c.wa.verifyToken })) if (!v) p.push(`${k} is required in ${c.mode} mode`);
+  if (c.llm.provider !== 'anthropic' || !c.llm.apiKey) p.push('LLM_PROVIDER=anthropic and ANTHROPIC_API_KEY are required');
+  if (c.aiDailyBudgetMinor == null || c.aiDailyBudgetMinor <= 0) p.push('AI_DAILY_BUDGET_INR must be set (daily spend cap per workspace)');
+  if (c.mode === 'live') {
+    for (const [k, v] of Object.entries({ WA_PHONE_NUMBER_ID: c.wa.phoneNumberId, WA_ACCESS_TOKEN: c.wa.token, WA_APP_SECRET: c.wa.appSecret, WA_VERIFY_TOKEN: c.wa.verifyToken })) if (!v) p.push(`${k} is required in live mode`);
     if (c.dbRolePassword === 'dev') p.push('DB_ROLE_PASSWORD must not be the dev default');
-    if (c.credentialKey === DEV_KEY) p.push('CREDENTIAL_KEY must not be the dev key');
   }
-  if (c.llm.provider === 'anthropic' && !c.llm.apiKey) p.push('ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic');
-  if (c.mode === 'live' && c.llm.provider !== 'anthropic') p.push('live mode needs LLM_PROVIDER=anthropic');
-  if (c.mode === 'live' && (!c.meta.appId || !c.meta.appSecret)) p.push('META_APP_ID and META_APP_SECRET are required in live mode');
   return p;
+}
+
+/** Features that stay off (honestly reported to users) until their credentials are set. Not fatal. */
+export function configWarnings(c: Config): string[] {
+  const w: string[] = [];
+  if (c.mode === 'mock') return w;
+  if (!c.meta.appId || !c.meta.appSecret) w.push('META_APP_ID/META_APP_SECRET not set: "connect" (Facebook/Instagram login) and publishing are unavailable');
+  if (!c.lookup.igUserId || !c.lookup.token) w.push('META_LOOKUP_IG_USER_ID/META_LOOKUP_TOKEN not set: Instagram link lookups are unavailable');
+  if (!c.meta.appId || !c.meta.appSecret) w.push('Facebook Page link lookups need META_APP_ID/SECRET and Meta\'s Page Public Metadata Access approval');
+  if (!c.lookup.youtubeKey) w.push('YOUTUBE_API_KEY not set: YouTube link lookups are unavailable');
+  if (!c.meta.publishEnabled) w.push('META_PUBLISH_ENABLED=false: approved posts will not be published');
+  if (c.meta.publishEnabled && !c.publicBaseUrl.startsWith('https://')) w.push('Publishing needs PUBLIC_BASE_URL to be a public https URL (e.g. a cloudflared tunnel) so Meta can fetch the media');
+  return w;
 }

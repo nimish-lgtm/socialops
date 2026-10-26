@@ -7,7 +7,7 @@ official APIs, reads it back to verify it is live, and reports the platform's ow
 Status: everything below runs and is tested against fakes and a real Postgres. Nothing has been run against real
 WhatsApp, Meta or a live model yet. See `docs/STATUS.md` for exactly what is built, verified and open.
 
-## Quick start (no accounts needed) — Windows, macOS or Linux
+## Quick start (real chat in the browser) — Windows, macOS or Linux
 
 Requirements: Node 22+ and Git. Postgres and ffmpeg are optional.
 
@@ -15,21 +15,46 @@ Requirements: Node 22+ and Git. Postgres and ffmpeg are optional.
 git clone -b claude/eloquent-brown-r231x2 https://github.com/nimish-lgtm/socialops
 cd socialops
 npm install
-npm run dev                   # then open http://localhost:8080/sim
 ```
 
-`npm run dev` uses the Postgres at `DATABASE_URL` if one is running; otherwise it starts a built-in Postgres
-(stored in `./data/pg`, first start takes about 20 seconds). Without ffmpeg installed, the media quality check is skipped.
+Create `.env` with at least your Claude key and a daily AI budget (never paste the key anywhere else):
 
-In the simulator you chat as the owner, an editor, a viewer or a stranger, send real photos/videos, tap buttons,
-and watch tasks, approvals, the ledger, posts, jobs and the audit log update. Fault switches let you make the platform
-time out, reject, never go live, expire tokens, or make the model return junk.
+```
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=<your key>
+AI_DAILY_BUDGET_INR=50
+```
 
 ```sh
-npm test                      # 109 tests (+14 listed gaps): goal journeys, fault matrix, RLS, ledger, HTTP, commands, cost, adapters
-npm run demo                  # scripted conversation printed to the terminal
+npm run dev                   # then open http://localhost:8080/
+```
+
+`npm run dev` runs `MODE=web`: real Claude, real platform APIs, chat in the browser. It generates the server secrets
+(`CREDENTIAL_KEY`, `LINK_SECRET`, `OPERATOR_TOKEN`) into `.env` on first start and refuses to start without the Claude key
+and budget. It uses the Postgres at `DATABASE_URL` if one is running; otherwise it starts a built-in Postgres
+(stored in `./data/pg`, first start takes about 20 seconds). Without ffmpeg installed, the media quality check is skipped.
+
+Every new browser is a first-time user: its first message creates that user's own workspace (they are the owner)
+and starts onboarding. "New user" in the header starts over as another first-time user. Sign-ups are capped by
+`SIGNUPS_PER_DAY` (default 50). The browser identity is a signed cookie, so clearing cookies loses access to that workspace.
+
+What needs which credential (the server prints a warning for each one that is missing, and tells the user honestly in chat):
+
+| Feature | Needs |
+|---|---|
+| Chat, onboarding, captions | `ANTHROPIC_API_KEY`, `AI_DAILY_BUDGET_INR` |
+| Instagram link → public info (Business/Creator accounts only) | `META_LOOKUP_IG_USER_ID` + `META_LOOKUP_TOKEN` (your own IG professional account and a token with `instagram_basic`) |
+| Facebook Page link → public info | `META_APP_ID`/`META_APP_SECRET` and Meta's "Page Public Metadata Access" approval |
+| YouTube channel link → stats and latest videos | `YOUTUBE_API_KEY` (free, YouTube Data API v3) |
+| "connect" (log in to your own Page/Instagram) | `META_APP_ID`/`META_APP_SECRET`, redirect `<PUBLIC_BASE_URL>/connect/meta/callback` |
+| Publishing | the above, `META_PUBLISH_ENABLED=true`, and a public https `PUBLIC_BASE_URL` (e.g. a cloudflared tunnel) |
+
+Personal or private profiles, X, LinkedIn, TikTok and post/reel links cannot be read: no official API allows it, and nothing is scraped.
+
+```sh
+npm test                      # automated tests (fakes, MODE=mock): goal journeys, fault matrix, RLS, ledger, HTTP, lookups, web chat
 npm run eval                  # intent + caption eval sets against the configured model
-npm run doctor                # checks configuration for MODE (and the WhatsApp token in hybrid/live)
+npm run doctor                # checks configuration for MODE (and the WhatsApp token in live)
 ```
 
 Tests need a Postgres admin URL in `TEST_DATABASE_URL` (default `postgres://socialops_owner:dev@localhost:5432/postgres`);
@@ -56,15 +81,14 @@ Safety rules the code enforces (each has a test):
 
 ## Modes
 
-| MODE | WhatsApp | Instagram/Facebook | Model | Use |
+| MODE | Chat channel | Instagram/Facebook/YouTube | Model | Use |
 |---|---|---|---|---|
-| mock | fake | fake | fake | automated tests |
-| sim | browser simulator | fake | fake or Claude | manual testing, demos |
-| hybrid | real (Meta test number) | fake | Claude | real phone, nothing published; replies prefixed [SIMULATION] |
-| live | real | real (behind META_PUBLISH_ENABLED) | Claude | live checks, then pilots |
+| mock | fake | fake | fake | automated tests only |
+| web | browser chat at `/` | real official APIs | Claude | real users in a browser |
+| live | WhatsApp Cloud API | real official APIs | Claude | real users on WhatsApp |
 
-`live` refuses to start with any fake adapter, missing secret or dev key.
+`web` and `live` refuse to start with any fake adapter or missing secret; `live` also refuses the dev DB password.
 
 ## Layout
 
-`src/` core code · `migrations/` SQL · `tests/` · `evals/` · `sim/` simulator page · `docs/` plan, status, facts, decisions, runbook.
+`src/` core code · `migrations/` SQL · `tests/` · `evals/` · `web/` chat page · `docs/` plan, status, facts, decisions, runbook.

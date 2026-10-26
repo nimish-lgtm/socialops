@@ -3,7 +3,8 @@ import { AppError } from '../lib/errors';
 import { newId } from '../lib/ids';
 import { capabilityFor } from './matrix';
 
-const PHONE = /^\d{8,15}$/;
+/** WhatsApp numbers (E.164 digits) or browser-chat session ids. */
+export const PHONE = /^(\d{8,15}|w[0-9a-f]{16})$/;
 
 export async function createWorkspace(db: Db, a: { name: string; kind: 'personal' | 'creator' | 'business'; ownerPhone: string; aiDailyBudgetMinor?: number | null; id?: string }): Promise<string> {
   if (!PHONE.test(a.ownerPhone)) throw new AppError('invalid_phone', 'permanent');

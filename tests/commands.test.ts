@@ -227,15 +227,6 @@ describe('model use and cost', () => {
   });
 });
 
-describe('hybrid mode', () => {
-  it('T-HYB-01 every message carries the simulation banner', async () => {
-    h = await harness({ env: { MODE: 'mock' } });
-    (h.d.messenger as any).simulationBanner = true;
-    await h.say(P.owner, 'help');
-    expect(h.last(P.owner)).toMatch(/^\[SIMULATION/);
-  });
-});
-
 export { HOUR };
 
 describe('greetings', () => {
@@ -278,10 +269,10 @@ describe('conversation', () => {
     expect(t.join('\n')).toMatch(/koi post live nahi/);
   });
 
-  it('T-CHAT-03 without an AI key the bot says it is in demo mode instead of "not understood"', async () => {
+  it('T-CHAT-03 when the model cannot help, the bot says it did not understand', async () => {
     h = await harness();
     await h.say(P.owner, 'aaj mausam kaisa hai');
-    expect(h.last(P.owner)).toMatch(/demo mode/);
+    expect(h.last(P.owner)).toMatch(/Samajh nahi aaya/);
   });
 
   it('T-CHAT-04 forget clears the chat history', async () => {

@@ -30,20 +30,33 @@ export const ONBOARDING_BY_KIND: Record<string, Array<{ key: string; ask: string
 };
 export const onboardingQuestions = (kind: string) => ONBOARDING_BY_KIND[kind] ?? ONBOARDING_BY_KIND.business!;
 
+const SOURCE_LABEL: Record<string, string> = {
+  instagram_business_discovery: 'Instagram ki public info (official API)',
+  facebook_page_public: 'Facebook Page ki public info (official API)',
+  youtube_data_api: 'YouTube channel ki public info (official API)',
+  instagram_graph_api: 'Aapke jude Instagram account ki info',
+  facebook_graph_api: 'Aapke jude Facebook Page ki info',
+};
+
 export const copy = {
   unknownSender: 'Ye number kisi workspace se juda nahi hai. Apne account owner se access maangein.',
   paused: 'Ye workspace abhi paused hai. Owner "resume" likh kar chalu kar sakta hai.',
   onboardingDone: 'Shukriya! Profile save ho gaya. Ab koi video ya photo bhejiye, main caption bana kar approval ke liye bhejunga. Account jodne ke liye "connect" likhein.',
   greet: 'Namaste! 🙏 Photo ya video bhejiye, saath mein 1 line likhiye ki ye kis baare mein hai. Main caption bana kar approval ke liye bhejunga. Aur options ke liye "help" likhein.',
   help: 'Main ye kar sakta hoon:\n• Video/photo bhejein → caption + approval → post\n• "report" → last posts ke numbers\n• "connect" → Instagram/Facebook jodna\n• "status", "pause", "resume"\n• "forget" → meri yaad hataana, "export", "delete" → aapka data',
-  demoMode: 'Main abhi demo mode mein hoon (AI band hai), isliye sirf commands samajhta hoon: help, report, status, connect, ya photo/video bhejein. Baat-cheet ke liye AI key jodni hogi.',
-  pageLinkSeen: (url: string) => `Ye aapka page lagta hai 👍 Main link khol kar data nahi uthata (Facebook/Instagram iski izazat nahi dete). Is link se ek baar login karke page jodiye, phir main page ki poori info (followers, bio, recent posts) khud la dunga:\n${url}`,
-  pageLinkNotOwner: 'Page jodne ka kaam sirf owner kar sakta hai.',
+  signupsFull: 'Abhi naye sign-up kuch der ke liye band hain. Thodi der baad dobara likhein.',
+  lookingUp: (platform: string) => `${platform} link mila. Official API se public info dekh raha hoon...`,
+  lookupUnsupported: (name: string) => `${name} ki info main nahi dekh sakta: is platform ki official API public profile padhne nahi deti (personal ya private accounts bhi nahi). Aap 1-2 line mein bata dein ki aapka page kis baare mein hai.`,
+  lookupShareLink: 'Ye Facebook "share" link hai, isse page ka naam nahi milta. Page ka link bhejiye jaise facebook.com/aapkapage, ya "connect" likh kar login se jodiye.',
+  lookupNotConfigured: (platform: string) => `${platform} lookup abhi set up nahi hai (API key missing). Admin ko batayein, ya "connect" likh kar account jodiye.`,
+  lookupNotPublic: (platform: string, handle: string) => `${platform} par "${handle}" ki public info nahi mili. Ye sirf Business/Creator accounts ke liye hota hai, personal ya private accounts ke liye nahi. "connect" likh kar login se jodna ho sakta hai.`,
+  lookupFbApproval: 'Facebook Page ki public info ke liye Meta ki approval chahiye jo abhi nahi hai. "connect" likh kar page ke admin account se login karein, phir poori info mil jayegi.',
+  connectHint: 'Is account par post karne aur poore numbers ke liye "connect" likh kar login se jodiye.',
   accountInfo: (i: { name: string | null; username: string | null; category: string | null; bio: string | null; followers: number | null; following: number | null; postsCount: number | null; recent: Array<{ caption: string | null; likes: number | null; comments: number | null }>; source: string }) => {
     const n = (v: number | null) => (v === null ? 'pata nahi' : v.toLocaleString('en-IN'));
     const lines = [
-      `Page ki info mil gayi${i.source === 'demo' ? ' (DEMO data, test login)' : ''}:`,
-      `• ${i.name ?? 'naam nahi mila'}${i.username ? ` (@${i.username})` : ''}${i.category ? ` · ${i.category}` : ''}`,
+      `${SOURCE_LABEL[i.source] ?? 'Page ki info mil gayi'}:`,
+      `• ${i.name ?? 'naam nahi mila'}${i.username ? ` (@${i.username.replace(/^@/, '')})` : ''}${i.category ? ` · ${i.category}` : ''}`,
       `• Followers: ${n(i.followers)} · Following: ${n(i.following)} · Posts: ${n(i.postsCount)}`,
       ...(i.bio ? [`• Bio: ${i.bio.slice(0, 160)}`] : []),
       ...(i.recent.length ? ['• Recent posts:', ...i.recent.slice(0, 3).map((r) => `   - ${(r.caption ?? '(bina caption)').split('\n')[0]!.slice(0, 50)}${r.likes !== null ? ` · ${r.likes} likes` : ''}${r.comments !== null ? ` · ${r.comments} comments` : ''}`)] : []),

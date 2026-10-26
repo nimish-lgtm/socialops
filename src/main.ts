@@ -1,4 +1,4 @@
-import { configProblems, loadConfig, loadEnvFile } from './config';
+import { configProblems, configWarnings, loadConfig, loadEnvFile } from './config';
 import { buildDeps } from './app/build';
 import { buildServer } from './http/server';
 import { enqueue } from './core/queue';
@@ -11,7 +11,8 @@ if (problems.length) {
   console.error(`MODE=${config.mode} cannot start:\n- ` + problems.join('\n- '));
   process.exit(1);
 }
-if (config.mode === 'sim' || config.mode === 'mock') {
+for (const w of configWarnings(config)) console.warn('WARN ' + w);
+if (config.mode !== 'live') {
   await ensureRoles(config.databaseUrl, config.dbRolePassword);
   await migrate(config.databaseUrl);
 }
@@ -30,7 +31,7 @@ try {
   if ((e as { code?: string }).code !== 'EAFNOSUPPORT') throw e;
   await app.listen({ port: config.port, host: '0.0.0.0' });
 }
-d.log.info('listening', { port: config.port, mode: config.mode, sim: config.mode === 'sim' ? `${config.publicBaseUrl}/sim` : undefined });
+d.log.info('listening', { port: config.port, mode: config.mode, chat: config.mode === 'web' ? `${config.publicBaseUrl}/` : undefined });
 
 const shutdown = async () => { d.queue.stop(); await app.close(); await d.db.close(); process.exit(0); };
 process.on('SIGINT', shutdown);

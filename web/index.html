@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SocialOps</title>
+<style>
+:root { --bg:#efeae2; --panel:#fff; --me:#d9fdd3; --them:#fff; --ink:#111b21; --muted:#667781; --accent:#00a884; --line:#e9edef; }
+@media (prefers-color-scheme: dark) { :root { --bg:#0b141a; --panel:#202c33; --me:#005c4b; --them:#202c33; --ink:#e9edef; --muted:#8696a0; --line:#2a3942; } }
+* { box-sizing:border-box; }
+html, body { height:100%; margin:0; }
+body { font:15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--ink); display:flex; justify-content:center; }
+.app { width:100%; max-width:760px; height:100%; display:flex; flex-direction:column; background:var(--bg); }
+header { background:var(--panel); padding:10px 16px; display:flex; align-items:center; gap:12px; border-bottom:1px solid var(--line); }
+.avatar { width:38px; height:38px; border-radius:50%; background:var(--accent); color:#fff; display:grid; place-items:center; font-weight:700; }
+header .t { flex:1; } header .t b { display:block; } header .t small { color:var(--muted); }
+header button { background:none; border:1px solid var(--line); color:var(--muted); border-radius:16px; padding:5px 10px; cursor:pointer; font:inherit; font-size:13px; }
+#log { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:6px; }
+.msg { max-width:82%; padding:7px 10px 4px; border-radius:8px; white-space:pre-wrap; word-wrap:break-word; box-shadow:0 1px .5px rgba(0,0,0,.13); }
+.in { align-self:flex-start; background:var(--them); } .out { align-self:flex-end; background:var(--me); }
+.msg time { display:block; text-align:right; font-size:11px; color:var(--muted); margin-top:2px; }
+.msg a { color:var(--accent); word-break:break-all; }
+.btns { display:flex; flex-direction:column; gap:4px; margin-top:6px; }
+.btns button { border:none; border-top:1px solid var(--line); background:none; color:var(--accent); font:inherit; padding:7px; cursor:pointer; }
+.btns button:disabled { color:var(--muted); cursor:default; }
+.empty { margin:auto; text-align:center; color:var(--muted); max-width:420px; }
+form { display:flex; gap:8px; padding:10px 12px; background:var(--panel); align-items:flex-end; }
+textarea { flex:1; resize:none; border:none; border-radius:20px; padding:10px 14px; font:inherit; background:var(--bg); color:var(--ink); max-height:120px; }
+textarea:focus { outline:2px solid var(--accent); }
+.icon { width:42px; height:42px; border-radius:50%; border:none; background:var(--accent); color:#fff; font-size:18px; cursor:pointer; flex:none; }
+.icon.alt { background:transparent; color:var(--muted); font-size:22px; }
+#status { font-size:12px; color:#c0392b; text-align:center; padding:2px; min-height:16px; background:var(--panel); }
+@media (max-width:480px) { #log { padding:10px; } .msg { max-width:90%; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="avatar">S</div>
+    <div class="t"><b>SocialOps</b><small>Aapka social media assistant</small></div>
+    <button id="reset" type="button" title="Naye user ki tarah shuru karein">New user</button>
+  </header>
+  <div id="log"><div class="empty" id="empty">Namaste likhiye, apne Instagram / Facebook / YouTube page ka link bhejiye, ya koi photo/video bhejiye.</div></div>
+  <div id="status"></div>
+  <form id="f">
+    <input type="file" id="file" accept="image/*,video/*" hidden>
+    <button class="icon alt" type="button" id="attach" title="Photo ya video">📎</button>
+    <textarea id="t" rows="1" placeholder="Message likhiye" autocomplete="off"></textarea>
+    <button class="icon" type="submit" title="Send">➤</button>
+  </form>
+</div>
+<script>
+const log = document.getElementById('log'), t = document.getElementById('t'), statusEl = document.getElementById('status');
+let after = 0, busy = false;
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+const linkify = (s) => esc(s).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`);
+const hhmm = (at) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+function render(m) {
+  document.getElementById('empty')?.remove();
+  const b = m.body || {}, el = document.createElement('div');
+  el.className = 'msg ' + (m.dir === 'in' ? 'out' : 'in');
+  let text = '';
+  if (m.dir === 'in') text = b.kind === 'media' ? `📎 ${b.mime || 'file'}${b.caption ? '\n' + b.caption : ''}` : b.kind === 'tap' ? `▸ ${b.title || ''}` : (b.body || '');
+  else if (b.kind === 'template') text = `${b.name}: ${(b.vars || []).join(' · ')}`;
+  else text = b.body || '';
+  el.innerHTML = linkify(text);
+  if (m.dir === 'out' && b.kind === 'buttons') {
+    const box = document.createElement('div'); box.className = 'btns';
+    for (const btn of b.buttons || []) {
+      const x = document.createElement('button'); x.type = 'button'; x.textContent = btn.title;
+      x.onclick = () => { box.querySelectorAll('button').forEach((y) => (y.disabled = true)); send({ buttonId: btn.id, buttonTitle: btn.title }); };
+      box.appendChild(x);
+    }
+    el.appendChild(box);
+  }
+  const tm = document.createElement('time'); tm.textContent = hhmm(m.at); el.appendChild(tm);
+  log.appendChild(el);
+}
+
+async function poll() {
+  try {
+    const r = await fetch('/chat/messages?after=' + after, { credentials: 'same-origin' });
+    if (!r.ok) throw new Error(r.status);
+    const { messages } = await r.json();
+    const stick = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+    for (const m of messages) { render(m); after = Math.max(after, Number(m.id)); }
+    if (messages.length && stick) log.scrollTop = log.scrollHeight;
+    statusEl.textContent = '';
+  } catch { statusEl.textContent = 'Server se connection nahi ho raha, dobara koshish ho rahi hai...'; }
+}
+
+async function send(payload) {
+  if (busy) return; busy = true;
+  try {
+    const r = await fetch('/chat/send', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!r.ok) { const j = await r.json().catch(() => ({})); statusEl.textContent = j.error || ('Bhej nahi paaye (' + r.status + ')'); }
+  } catch { statusEl.textContent = 'Bhej nahi paaye. Internet check karein.'; }
+  busy = false; await poll(); log.scrollTop = log.scrollHeight;
+}
+
+document.getElementById('f').onsubmit = (e) => { e.preventDefault(); const v = t.value.trim(); if (!v) return; t.value = ''; t.style.height = ''; send({ text: v }); };
+t.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('f').requestSubmit(); } });
+t.addEventListener('input', () => { t.style.height = ''; t.style.height = Math.min(t.scrollHeight, 120) + 'px'; });
+document.getElementById('attach').onclick = () => document.getElementById('file').click();
+document.getElementById('file').onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  if (f.size > 16 * 1024 * 1024) { statusEl.textContent = 'File 16 MB se chhoti honi chahiye'; return; }
+  const caption = t.value.trim(); t.value = '';
+  const base64 = await new Promise((ok) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(',')[1]); fr.readAsDataURL(f); });
+  send({ media: { base64, mime: f.type, caption } });
+};
+document.getElementById('reset').onclick = async () => {
+  if (!confirm('Naye user ki tarah shuru karein? Is browser ki purani chat yahan se hat jayegi.')) return;
+  await fetch('/chat/new', { method: 'POST', credentials: 'same-origin' });
+  location.reload();
+};
+poll(); setInterval(poll, 1500);
+</script>
+</body>
+</html>

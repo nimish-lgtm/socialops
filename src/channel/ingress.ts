@@ -1,5 +1,7 @@
 import type { Deps } from '../app/deps';
-import { hashPhone } from '../lib/ids';
+import { hashPhone, newId } from '../lib/ids';
+import type { Tx } from '../db/db';
+import { PHONE } from '../accounts/workspaces';
 import { copy } from '../copy';
 import { route } from './router';
 
@@ -60,6 +62,18 @@ export async function handleWebhook(d: Deps, body: unknown): Promise<void> {
 
 const RATE_LIMIT_PER_MIN = 30;
 
+/** A first-time sender gets their own workspace as owner (personal by default; onboarding may switch it with consent). */
+async function selfSignup(d: Deps, tx: Tx, phone: string, now: Date) {
+  if (!PHONE.test(phone)) return undefined;
+  const recent = await tx.one<{ n: string }>(`SELECT COUNT(*) n FROM workspaces WHERE created_at > $1`, [new Date(now.getTime() - 24 * 3600_000)]);
+  if (Number(recent?.n ?? 0) >= d.config.signupsPerDay) return undefined;
+  const ws = newId('ws');
+  await tx.q(`INSERT INTO workspaces(id, name, kind, created_at) VALUES($1,$2,'personal',$3)`, [ws, 'New workspace', now]);
+  await tx.q(`INSERT INTO members(phone, workspace_id, role) VALUES($1,$2,'owner')`, [phone, ws]);
+  await tx.q(`INSERT INTO audit(workspace_id, actor, event, detail) VALUES($1,'system','self_signup','{}')`, [ws]);
+  return { phone, workspace_id: ws, role: 'owner' };
+}
+
 /** Dedupe, open the 24h window, resolve sender, rate limit, then hand to the router. */
 export async function receive(d: Deps, m: InMsg): Promise<void> {
   const now = d.clock.now();
@@ -68,9 +82,10 @@ export async function receive(d: Deps, m: InMsg): Promise<void> {
     const ins = await tx.q(`INSERT INTO inbound_events(wamid, from_hash, kind, received_at) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING 1`, [m.wamid, fromHash, m.type, now]);
     if (!ins.length) return { dup: true as const };
     await tx.q(`INSERT INTO conversations(phone, last_inbound_at) VALUES($1,$2) ON CONFLICT (phone) DO UPDATE SET last_inbound_at=excluded.last_inbound_at`, [m.from, now]);
-    const member = await tx.one<{ phone: string; workspace_id: string; role: string }>('SELECT phone, workspace_id, role FROM members WHERE phone=$1', [m.from]);
+    let member = await tx.one<{ phone: string; workspace_id: string; role: string }>('SELECT phone, workspace_id, role FROM members WHERE phone=$1', [m.from]);
+    if (!member && d.config.selfSignup) member = await selfSignup(d, tx, m.from, now);
     if (!member) {
-      await d.messenger.queue(tx, { workspaceId: null, to: m.from, msg: { kind: 'text', body: copy.unknownSender }, key: `unknown:${fromHash}:${now.toISOString().slice(0, 10)}` });
+      await d.messenger.queue(tx, { workspaceId: null, to: m.from, msg: { kind: 'text', body: d.config.selfSignup ? copy.signupsFull : copy.unknownSender }, key: `unknown:${fromHash}:${now.toISOString().slice(0, 10)}` });
       await tx.q(`INSERT INTO audit(workspace_id, actor, event, detail) VALUES(NULL,$1,'unknown_sender','{}')`, [fromHash]);
       return { unknown: true as const };
     }

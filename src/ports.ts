@@ -7,7 +7,8 @@ export type OutMessage =
   | { kind: 'template'; name: string; lang: string; vars: string[] };
 
 export interface WhatsAppPort {
-  readonly kind: 'fake' | 'live';
+  /** fake = tests; live = WhatsApp Cloud API; web = the browser chat channel. */
+  readonly kind: 'fake' | 'live' | 'web';
   send(to: string, msg: OutMessage): Promise<{ waId: string }>;
   downloadMedia(mediaId: string): Promise<{ data: Buffer; mime: string }>;
 }

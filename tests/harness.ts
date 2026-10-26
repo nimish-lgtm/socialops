@@ -11,7 +11,8 @@ import { silentLogger } from '../src/lib/log';
 import { FakeWhatsApp, bodyOf } from '../src/adapters/fake-whatsapp';
 import { FakeSocial } from '../src/adapters/fake-social';
 import { FakeLlm } from '../src/adapters/llm';
-import { FakeInspector } from '../src/adapters/storage';
+import { DiskStorage, FakeInspector } from '../src/adapters/storage';
+import { WebChat } from '../src/adapters/webchat';
 import { signBody } from '../src/security/crypto';
 import { addMember, connectAccount, createWorkspace } from '../src/accounts/workspaces';
 import { newId } from '../src/lib/ids';
@@ -29,6 +30,8 @@ export interface HarnessOpts {
   env?: Record<string, string>;
   llm?: LlmPort;
   secondWorkspace?: boolean;
+  lookupFetch?: typeof fetch;
+  webchat?: boolean;
 }
 
 export type Harness = Awaited<ReturnType<typeof harness>>;
@@ -45,7 +48,7 @@ export async function harness(o: HarnessOpts = {}) {
   const social = new FakeSocial();
   const llm = o.llm ?? new FakeLlm();
   const inspector = new FakeInspector();
-  const d = buildDeps(config, { clock, log: silentLogger, wa, social, llm, inspector, db });
+  const d = buildDeps(config, { clock, log: silentLogger, wa: o.webchat ? new WebChat(db, new DiskStorage(storageDir)) : wa, social, llm, inspector, db, lookupFetch: o.lookupFetch });
   const app = buildServer(d);
   await app.ready();
 

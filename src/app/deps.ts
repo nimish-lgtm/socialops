@@ -29,4 +29,6 @@ export interface Deps {
   skills: Skills;
   engine: Engine;
   queue: Queue;
+  /** fetch for public profile lookups (egress-guarded in production, mocked in tests). */
+  lookupFetch: typeof fetch;
 }
