@@ -1,4 +1,6 @@
 import type { Workflow, Ctx } from '../core/engine';
+import type { Tx } from '../db/db';
+import type { OutMessage } from '../ports';
 import { copy } from '../copy';
 import { capabilityFor } from '../accounts/matrix';
 import { createApproval, supersedePending } from '../policy/approvals';
@@ -6,6 +8,13 @@ import { detectClaims, bannedHits } from '../skills/skills';
 import { newId } from '../lib/ids';
 import { HOUR } from '../lib/clock';
 import { accountRef, awaitAnswer, clearAwait, CONSENT_EVENTS, fullCaption, owners, platformLabel, publishPayload, type AccountRow } from './helpers';
+
+/** The approval card: exact caption, account, audience note, and highlighted claims or banned phrases. */
+export async function renderCard(tx: Tx, ws: { id: string; kind: string }, data: Record<string, any>, approvalId: string, caption: string): Promise<OutMessage> {
+  const banned = (await tx.one<{ answers: { banned?: string } }>('SELECT answers FROM profiles WHERE workspace_id=$1', [ws.id]))?.answers?.banned ?? '';
+  const flags = [...detectClaims(caption), ...bannedHits(caption, banned.split(/[,\n]/)).map((h) => `MANA HAI: ${h}`)];
+  return { kind: 'buttons', body: copy.approvalCard(caption, data.platform ?? '', flags, ws.kind !== 'business'), buttons: copy.approvalButtons(approvalId) };
+}
 
 const notifyOwners = async (ctx: Ctx, key: string, body: string, alsoRequester = true) => {
   const to = new Set(await owners(ctx.tx, ctx.ws.id));
@@ -130,10 +139,7 @@ export const postWorkflow: Workflow = {
           requestedFrom: to, expiresAt: new Date(ctx.now.getTime() + ctx.deps.config.approvalTtlHours * HOUR),
         });
         ctx.set({ approvalId });
-        const banned = (await ctx.tx.one<{ answers: { banned?: string } }>('SELECT answers FROM profiles WHERE workspace_id=$1', [ctx.ws.id]))?.answers?.banned ?? '';
-        const hits = bannedHits(payload.caption, banned.split(/[,\n]/));
-        const flags = [...detectClaims(payload.caption), ...hits.map((h) => `MANA HAI: ${h}`)];
-        if (to) await ctx.send(to, { kind: 'buttons', body: copy.approvalCard(payload.caption, d.platform ?? '', flags, ctx.ws.kind !== 'business'), buttons: copy.approvalButtons(approvalId) }, `card:${approvalId}`);
+        if (to) await ctx.send(to, await renderCard(ctx.tx, ctx.ws, d, approvalId, payload.caption), `card:${approvalId}`);
       },
       async exit(ctx, next) {
         if (next !== 'publishing') await supersedePending(ctx.tx, ctx.task.id);

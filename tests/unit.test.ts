@@ -87,6 +87,7 @@ describe('content checks', () => {
     expect(qcProblems({ durationS: 30, width: 1080, height: 1920 }, 'video/mp4')).toEqual([]);
     expect(qcProblems({ durationS: 1, width: 1080, height: 1920 }, 'video/mp4')).toEqual(['video 3 second se chhota hai']);
     expect(qcProblems({ durationS: null, width: null, height: null }, 'image/jpeg')).toEqual(['file padh nahi paya']);
+    expect(qcProblems({ durationS: null, width: 0, height: 0 }, 'image/jpeg')).toEqual(['file padh nahi paya']);
     expect(qcProblems({ durationS: null, width: null, height: null }, 'application/pdf')).toEqual(['sirf photo ya video chalega']);
   });
   it('T-UNIT-11 redaction masks tokens and keyed secrets in nested values', () => {

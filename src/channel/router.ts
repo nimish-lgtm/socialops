@@ -7,6 +7,7 @@ import { decide } from '../policy/approvals';
 import { copy } from '../copy';
 import { HOUR } from '../lib/clock';
 import { CONSENT_EVENTS } from '../workflows/helpers';
+import { renderCard } from '../workflows/post';
 import type { InMsg } from './ingress';
 
 export interface Member { phone: string; workspace_id: string; role: string }
@@ -53,6 +54,7 @@ async function routeIn(d: Deps, member: Member, m: InMsg): Promise<void> {
       if (cmd === 'cancel_delete' && member.role === 'owner') return cancelDelete(d, tx, member, reply);
       return d.messenger.queue(tx, { workspaceId: ws, to: member.phone, msg: { kind: 'text', body: copy.paused }, key: `paused:${member.phone}:${d.clock.now().toISOString().slice(0, 10)}` });
     }
+    if (member.role === 'owner') await resendHeldCards(d, tx, w, member);
     if (m.type === 'button') return onButton(d, tx, member, m.buttonId!, reply);
     if (m.type === 'media') return onMedia(d, tx, member, m, reply);
     if (m.type === 'other') return reply(copy.notUnderstood);
@@ -85,6 +87,22 @@ async function routeIn(d: Deps, member: Member, m: InMsg): Promise<void> {
     if (c) return command(d, tx, w, member, c, reply);
     return reply(r.value.needs_clarification ?? copy.notUnderstood);
   });
+}
+
+/**
+ * An approval card sent while the owner's 24h window was closed is blocked, not lost:
+ * the next time the owner writes, every pending card that never went out is sent again.
+ */
+async function resendHeldCards(d: Deps, tx: Tx, w: WorkspaceRow, member: Member): Promise<void> {
+  const held = await tx.q<{ id: string; task_id: string; summary: string }>(
+    `SELECT a.id, a.task_id, a.summary FROM approvals a WHERE a.status='pending' AND a.requested_from=$1 AND a.expires_at > $2
+       AND NOT EXISTS (SELECT 1 FROM outbound_messages o WHERE o.dedupe_key IN ('card:' || a.id, 'card:' || a.id || ':held'))`,
+    [member.phone, d.clock.now()]);
+  for (const a of held) {
+    const t = await tx.one<TaskRow>('SELECT * FROM tasks WHERE id=$1', [a.task_id]);
+    if (!t || t.state !== 'awaiting_approval') continue;
+    await d.messenger.queue(tx, { workspaceId: w.id, to: member.phone, msg: await renderCard(tx, w, t.data, a.id, a.summary), key: `card:${a.id}:held` });
+  }
 }
 
 type Reply = (msg: OutMessage | string, suffix?: string) => Promise<void>;

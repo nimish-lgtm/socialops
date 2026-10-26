@@ -134,6 +134,16 @@ describe('fault and abuse matrix', () => {
     expect(h.social.publishCalls).toBe(1);
   });
 
+  it('F12b readback shows a different caption than approved: not reported live, escalated', async () => {
+    h = await harness();
+    const orig = h.social.readback.bind(h.social);
+    h.social.readback = async (r) => ({ ...(await orig(r)), caption: 'something else' });
+    await h.tap(P.owner, await h.toApproval());
+    expect((await h.task()).state).toBe('needs_human');
+    expect((await h.task()).data.escalation).toBe('readback_mismatch');
+    expect(h.texts(P.owner).join('\n')).not.toMatch(/Live ho gaya/);
+  });
+
   it('F13 worker dies mid-publish after the platform accepted: lease expires, reconcile completes it once', async () => {
     h = await harness();
     const approve = await h.toApproval();

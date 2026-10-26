@@ -17,7 +17,7 @@ const loadTask = (d: Deps, ws: string, id: string) => d.db.tenant(ws, (tx) => tx
 export function qcProblems(qc: { durationS: number | null; width: number | null; height: number | null }, mime: string): string[] {
   const p: string[] = [];
   if (!mime.startsWith('video/') && !mime.startsWith('image/')) return ['sirf photo ya video chalega'];
-  if (qc.width === null || qc.height === null) p.push('file padh nahi paya');
+  if (!qc.width || !qc.height) p.push('file padh nahi paya'); // ffprobe reports 0x0 for corrupt files
   if (mime.startsWith('video/') && qc.durationS !== null && qc.durationS < 3) p.push('video 3 second se chhota hai');
   if (mime.startsWith('video/') && qc.durationS !== null && qc.durationS > 900) p.push('video 15 minute se lamba hai');
   return p;

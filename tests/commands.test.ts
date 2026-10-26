@@ -55,10 +55,15 @@ describe('onboarding and commands', () => {
 
   it('T-CMD-04 an editor can upload; the approval goes to the owner; both are told when live', async () => {
     h = await harness();
-    await h.say(P.owner, 'status');
     await h.media(P.editor, { caption: 'Naya stock' });
     await h.tap(P.editor, `c:${(await h.task()).id}:n`);
-    expect(h.last(P.owner)).toMatch(/publish karni hai/);
+    // The owner has not written in 24h, so the card is held; it goes out as soon as the owner writes.
+    expect(h.msgs(P.owner)).toHaveLength(0);
+    expect((await h.sys(`SELECT COUNT(*)::int n FROM outbound_messages WHERE status='blocked_window'`))[0].n).toBe(1);
+    await h.say(P.owner, 'status');
+    expect(h.texts(P.owner).join('\n')).toMatch(/publish karni hai/);
+    await h.say(P.owner, 'status');
+    expect(h.texts(P.owner).filter((t) => /publish karni hai/.test(t))).toHaveLength(1);
     await h.tap(P.owner, h.findButton(P.owner, 'a:'));
     expect(h.last(P.owner)).toMatch(/Live ho gaya/);
     expect(h.last(P.editor)).toMatch(/Live ho gaya/);
