@@ -17,6 +17,7 @@ const ACTIVE_POST_STATES = ['received', 'waiting_reshoot', 'qc_passed', 'need_to
 /** Exact commands handled by rules: no model call, no cost. */
 const COMMANDS: Record<string, string> = {
   help: 'help', menu: 'help', madad: 'help',
+  hi: 'greet', hii: 'greet', hello: 'greet', helo: 'greet', hey: 'greet', namaste: 'greet', namaskar: 'greet', 'good morning': 'greet',
   report: 'report', result: 'report', views: 'report',
   status: 'status',
   connect: 'connect', 'account jodo': 'connect',
@@ -76,7 +77,7 @@ async function routeIn(d: Deps, member: Member, m: InMsg): Promise<void> {
       await tx.q(`UPDATE conversations SET state='idle', context='{}' WHERE phone=$1`, [member.phone]);
     }
 
-    if (!w.onboarded && member.role === 'owner' && !cmd) return startOnboarding(d, tx, w, member, reply);
+    if (!w.onboarded && member.role === 'owner' && (!cmd || cmd === 'greet')) return startOnboarding(d, tx, w, member, reply);
     if (cmd) return command(d, tx, w, member, cmd, reply);
 
     const r = await d.skills.intent(ws, text, w.kind);
@@ -112,6 +113,7 @@ async function command(d: Deps, tx: Tx, w: WorkspaceRow, member: Member, cmd: st
   if (member.role === 'viewer' && !['report', 'status', 'help'].includes(cmd)) return reply(copy.viewerOnly);
   switch (cmd) {
     case 'help': return reply(copy.help);
+    case 'greet': return reply(copy.greet);
     case 'new_post': return reply(copy.newPost);
     case 'report':
       return enqueue(tx, d.clock, 'report', { phone: member.phone }, { workspaceId: w.id });

@@ -237,3 +237,15 @@ describe('hybrid mode', () => {
 });
 
 export { HOUR };
+
+describe('greetings', () => {
+  it('T-CMD-09 greetings get a welcome without any model call; a new owner starts onboarding', async () => {
+    h = await harness();
+    for (const g of ['Hi', 'helo', 'Namaste']) { await h.say(P.editor, g); expect(h.last(P.editor)).toMatch(/Namaste! 🙏 Photo ya video bhejiye/); }
+    expect((h.llm as any).calls).toHaveLength(0);
+    await h.close();
+    h = await harness({ onboarded: false });
+    await h.say(P.owner, 'hello');
+    expect(h.last(P.owner)).toMatch(/1\) Aapka kaam/);
+  });
+});
