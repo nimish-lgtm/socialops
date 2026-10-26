@@ -290,3 +290,68 @@ describe('Goal: three kinds of users side by side', () => {
 
   it.todo('X-GAP-1 let the user pick which connected account each post goes to (first connected account is used)');
 });
+
+describe('Conversational onboarding with a real model (stubbed)', () => {
+  /** A stand-in that behaves like the onboard prompt asks: one question per turn, "you decide" handled, kind switch on consent. */
+  const modelLike = () => {
+    const calls: any[] = [];
+    const llm = {
+      kind: 'live' as const,
+      complete: async (r: any) => {
+        const u = JSON.parse(r.user);
+        calls.push(u);
+        let out: Record<string, unknown> = { intent: 'other', topic: null, needs_clarification: null, contains_secret: false, reply: 'ok' };
+        if (u.skill === 'onboard') {
+          const p = { ...u.profile_so_far };
+          const m: string | null = u.message;
+          if (m === null) out = { reply: 'Namaste! Aap kya share karna chahte hain?', profile: p, set_kind: null, done: false };
+          else if (/views|paise/i.test(m) && u.workspace_kind === 'personal') out = { reply: 'Views badhana aur kamai creator goals hain. Creator workspace bana doon?', profile: { ...p, goal: m }, set_kind: null, done: false };
+          else if (/^haan/i.test(m) && !p.niche) out = { reply: 'Ho gaya, ab creator hai. Aap kis cheez par content banate hain?', profile: p, set_kind: 'creator', done: false };
+          else if (/tum socho/i.test(m)) out = { reply: 'Main "dosti bhara aur mazedaar" tone rakhta hoon, baad mein badal sakte hain. Kya kabhi nahi likhna?', profile: { ...p, tone: 'dosti bhara aur mazedaar' }, set_kind: null, done: false };
+          else if (!p.niche) out = { reply: 'Badhiya! Aapke followers kaun hain?', profile: { ...p, niche: m }, set_kind: null, done: false };
+          else if (!p.audience) out = { reply: 'Tone kaisa rakhein?', profile: { ...p, audience: m }, set_kind: null, done: false };
+          else out = { reply: 'Shukriya! Ab photo ya video bhejiye, ya "connect" likh kar Facebook jodiye.', profile: { ...p, banned: m, language: 'Hinglish' }, set_kind: null, done: true };
+        }
+        return { text: JSON.stringify(out), inputTokens: 200, outputTokens: 60, measured: true };
+      },
+    };
+    return { llm, calls };
+  };
+
+  it('O-01 onboarding is a conversation: it reacts to goals, switches kind only with consent, and accepts "you decide"', async () => {
+    const m = modelLike();
+    h = await harness({ kind: 'personal', account: 'none', onboarded: false, llm: m.llm });
+    await h.sys(`UPDATE workspaces SET ai_daily_cap_minor=5000 WHERE id=$1`, [h.ws]);
+    await h.say(P.owner, 'hi');
+    expect(h.last(P.owner)).toBe('Namaste! Aap kya share karna chahte hain?');
+    await h.say(P.owner, 'mujhe apne facebook page ke views badhane hai, paise kamana');
+    expect(h.last(P.owner)).toMatch(/Creator workspace bana doon/);
+    expect((await h.sys(`SELECT kind FROM workspaces WHERE id=$1`, [h.ws]))[0].kind).toBe('personal');
+    await h.say(P.owner, 'haan kar do');
+    expect((await h.sys(`SELECT kind FROM workspaces WHERE id=$1`, [h.ws]))[0].kind).toBe('creator');
+    expect((await h.sys(`SELECT COUNT(*)::int n FROM audit WHERE event='workspace_kind_changed'`))[0].n).toBe(1);
+    await h.say(P.owner, 'comedy reels');
+    await h.say(P.owner, 'college students');
+    await h.say(P.owner, 'ye tum socho na');
+    expect(h.last(P.owner)).toMatch(/dosti bhara/);
+    await h.say(P.owner, 'gaali nahi');
+    expect(h.last(P.owner)).toMatch(/Shukriya/);
+    const prof = (await h.sys(`SELECT answers FROM profiles WHERE workspace_id=$1`, [h.ws]))[0].answers;
+    expect(prof).toMatchObject({ niche: 'comedy reels', audience: 'college students', tone: 'dosti bhara aur mazedaar', banned: 'gaali nahi' });
+    expect((await h.sys(`SELECT onboarded FROM workspaces WHERE id=$1`, [h.ws]))[0].onboarded).toBe(true);
+    const turns = m.calls.filter((c) => c.skill === 'onboard');
+    expect(turns.at(-1).history.length).toBeGreaterThan(4);
+    expect(h.texts(P.owner).filter((t) => /Profile save ho gaya/.test(t))).toHaveLength(0);
+  });
+
+  it('O-02 if the model fails mid-onboarding, the fixed questions take over from the first missing field', async () => {
+    let n = 0;
+    const llm = { kind: 'live' as const, complete: async () => { if (++n > 1) throw new Error('down'); return { text: JSON.stringify({ reply: 'Namaste! Aapka business kya hai?', profile: {}, set_kind: null, done: false }), inputTokens: 1, outputTokens: 1, measured: true }; } };
+    h = await harness({ kind: 'business', account: 'none', onboarded: false, llm });
+    await h.sys(`UPDATE workspaces SET ai_daily_cap_minor=5000 WHERE id=$1`, [h.ws]);
+    await h.say(P.owner, 'hi');
+    await h.say(P.owner, 'Mithai ki dukaan');
+    await h.drain();
+    expect(h.last(P.owner)).toMatch(/2\) Aap kya bechte hain/);
+  });
+});

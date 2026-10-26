@@ -29,6 +29,15 @@ export const CaptionOut = z.object({
 });
 export type Caption = z.infer<typeof CaptionOut>;
 
+export const PROFILE_KEYS = ['about', 'goal', 'niche', 'business', 'offer', 'audience', 'tone', 'banned', 'language'] as const;
+export const OnboardOut = z.object({
+  reply: z.string().min(1).max(1200),
+  profile: z.record(z.string(), z.string().max(300)).catch({}).transform((o) => Object.fromEntries(Object.entries(o).filter(([k]) => (PROFILE_KEYS as readonly string[]).includes(k)))),
+  set_kind: z.enum(['personal', 'creator', 'business']).nullable().catch(null).optional().transform((v) => v ?? null),
+  done: z.boolean().catch(false),
+});
+export type Onboard = z.infer<typeof OnboardOut>;
+
 export type SkillResult<T> = { ok: true; value: T } | { ok: false; reason: 'denied' | 'invalid' | 'error'; detail?: string };
 
 const extractJson = (s: string): unknown => {
@@ -50,7 +59,7 @@ export class Skills {
     if (hit && d.clock.now().getTime() - hit.at < 3600_000) return { ok: true, value: hit.value as T };
     const fake = d.llm.kind === 'fake';
     const model = fake ? 'fake' : tier === 'small' ? d.config.llm.small : d.config.llm.large;
-    const maxTokens = skill === 'caption' ? 700 : 500;
+    const maxTokens = skill === 'intent' ? 500 : 700;
     for (let attempt = 0; attempt < 2; attempt++) {
       const now = d.clock.now();
       const est = costMinor(model, estimateTokens(CORE_PROMPT + user), maxTokens);
@@ -82,6 +91,10 @@ export class Skills {
 
   intent(workspaceId: string, message: string, kind: string, history: ChatTurn[] = [], profile: Record<string, unknown> = {}) {
     return this.run(workspaceId, 'intent', { message: message.slice(0, 1000), workspace_kind: kind, history, workspace_context: profile }, IntentOut);
+  }
+
+  onboard(workspaceId: string, input: { kind: string; profile: Record<string, unknown>; history: ChatTurn[]; message: string | null }) {
+    return this.run(workspaceId, 'onboard', { workspace_kind: input.kind, profile_so_far: input.profile, history: input.history, message: input.message }, OnboardOut);
   }
 
   caption(workspaceId: string, input: { topic: string; profile: Record<string, unknown>; kind: string; untrusted?: string[] }) {

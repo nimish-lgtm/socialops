@@ -7,12 +7,23 @@ import { newId, sha256 } from '../lib/ids';
 import { DAY, HOUR } from '../lib/clock';
 import { runOnce } from '../core/ledger';
 import { markUsed, verifyApproval } from '../policy/approvals';
-import { copy } from '../copy';
+import { copy, onboardingQuestions } from '../copy';
+import type { ChatTurn } from '../skills/skills';
 import { accountRef, owners, platformLabel, publishPayload, type AccountRow } from '../workflows/helpers';
 import { exportWorkspace } from '../privacy/privacy';
 import { runScheduler } from './scheduler';
 
 const loadTask = (d: Deps, ws: string, id: string) => d.db.tenant(ws, (tx) => tx.one<TaskRow>('SELECT * FROM tasks WHERE id=$1', [id]));
+
+/** Fixed-question onboarding used without a model (or if the model fails): fills the next missing field. */
+export function scriptedTurn(kind: string, answers: Record<string, string>, message: string | null) {
+  const missing = onboardingQuestions(kind).filter((q) => !answers[q.key]);
+  const profile: Record<string, string> = {};
+  let rest = missing;
+  if (message !== null && missing[0]) { profile[missing[0].key] = message; rest = missing.slice(1); }
+  const next = rest[0];
+  return { reply: next ? next.ask : '', profile, done: !next, setKind: null };
+}
 
 export function qcProblems(qc: { durationS: number | null; width: number | null; height: number | null; skipped?: boolean }, mime: string): string[] {
   const p: string[] = [];
@@ -140,6 +151,31 @@ export function registerJobs(d: Deps): void {
       });
       await d.storage.removeWorkspace(ws);
       d.log.info('workspace_erased', { owners: phones.length });
+    },
+  });
+
+  q.on('onboard_turn', {
+    leaseMs: 90_000,
+    async run(job) {
+      const ws = job.workspace_id!;
+      const t = await loadTask(d, ws, String(job.payload.taskId));
+      if (!t || t.state !== 'thinking') return;
+      const kind = (await d.db.tenant(ws, (tx) => tx.one<{ kind: string }>('SELECT kind FROM workspaces WHERE id=$1', [ws])))!.kind;
+      const history = (t.data.history ?? []) as ChatTurn[];
+      const last = history.at(-1);
+      const message = last?.role === 'user' ? last.text : null;
+      const answers = (t.data.answers ?? {}) as Record<string, string>;
+      let turn: { reply: string; profile: Record<string, string>; done: boolean; setKind: string | null } | null = null;
+      if (d.llm.kind !== 'fake') {
+        const r = await d.skills.onboard(ws, { kind, profile: answers, history: message ? history.slice(0, -1) : history, message });
+        if (r.ok) turn = { reply: r.value.reply, profile: r.value.profile, done: r.value.done, setKind: r.value.set_kind };
+      }
+      await d.engine.dispatch(ws, t.id, 'turn', turn ?? scriptedTurn(kind, answers, message));
+    },
+    async onDead(job) {
+      const ws = job.workspace_id!;
+      const t = await loadTask(d, ws, String(job.payload.taskId));
+      if (t?.state === 'thinking') await d.engine.dispatch(ws, t.id, 'turn', scriptedTurn('business', t.data.answers ?? {}, null));
     },
   });
 

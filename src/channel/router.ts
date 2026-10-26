@@ -172,12 +172,12 @@ async function setStatus(d: Deps, tx: Tx, w: WorkspaceRow, member: Member, statu
 }
 
 async function startOnboarding(d: Deps, tx: Tx, w: WorkspaceRow, member: Member, reply: Reply): Promise<void> {
-  const open = await tx.one<{ id: string }>(`SELECT id FROM tasks WHERE workflow='onboarding' AND state='asking' ORDER BY created_at DESC LIMIT 1`);
+  const open = await tx.one<{ id: string }>(`SELECT id FROM tasks WHERE workflow='onboarding' AND state IN ('asking','thinking') ORDER BY created_at DESC LIMIT 1`);
   if (open) {
     await tx.q(`UPDATE conversations SET state='awaiting', context=$2 WHERE phone=$1`, [member.phone, { taskId: open.id, event: 'answer' }]);
     return reply('Chaliye wahin se jaari rakhte hain. Pichhla sawaal dobara dekhein aur jawab bhejein.');
   }
-  await d.engine.start(tx, w.id, 'onboarding', { answers: {}, step: 0 }, member.phone);
+  await d.engine.start(tx, w.id, 'onboarding', { answers: {}, step: 0, history: [] }, member.phone);
 }
 
 async function onMedia(d: Deps, tx: Tx, member: Member, m: InMsg, reply: Reply): Promise<void> {
