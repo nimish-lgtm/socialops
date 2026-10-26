@@ -8,6 +8,7 @@ import { handleWebhook } from '../channel/ingress';
 import { addMember, connectAccount, createWorkspace } from '../accounts/workspaces';
 import { authorizeUrl, exchangeAndDiscover } from '../accounts/meta-oauth';
 import { guardedFetch } from '../core/gateway';
+import { enqueue } from '../core/queue';
 import { copy } from '../copy';
 import { DAY } from '../lib/clock';
 import { owners, platformLabel } from '../workflows/helpers';
@@ -185,6 +186,7 @@ async function finishConnect(d: Deps, ws: string, accounts: Array<{ platform: st
       const r = await connectAccount(tx, { workspaceId: ws, ...a });
       await d.credentials.store(tx, { workspaceId: ws, accountId: r.id, provider: a.platform, token: a.token, expiresAt: new Date(d.clock.now().getTime() + 60 * DAY) });
       lines.push(copy.connected(platformLabel({ platform: a.platform, surface: a.surface, label: a.label }), r.route));
+      await enqueue(tx, d.clock, 'account_info', { accountId: r.id }, { workspaceId: ws, dedupeKey: `acctinfo:${r.id}:${d.clock.now().getTime()}` });
     }
     // Posts that were waiting only because no account was connected can now be routed.
     const held = await tx.q<{ id: string }>(`SELECT id FROM tasks WHERE workflow='post' AND state='blocked_route'`);

@@ -89,12 +89,12 @@ export class Skills {
     return { ok: false, reason: 'invalid' };
   }
 
-  intent(workspaceId: string, message: string, kind: string, history: ChatTurn[] = [], profile: Record<string, unknown> = {}) {
-    return this.run(workspaceId, 'intent', { message: message.slice(0, 1000), workspace_kind: kind, history, workspace_context: profile }, IntentOut);
+  intent(workspaceId: string, message: string, kind: string, history: ChatTurn[] = [], profile: Record<string, unknown> = {}, accounts: Array<Record<string, unknown>> = []) {
+    return this.run(workspaceId, 'intent', { message: message.slice(0, 1000), workspace_kind: kind, history, workspace_context: profile, connected_accounts: wrapUntrusted(accounts) }, IntentOut);
   }
 
-  onboard(workspaceId: string, input: { kind: string; profile: Record<string, unknown>; history: ChatTurn[]; message: string | null }) {
-    return this.run(workspaceId, 'onboard', { workspace_kind: input.kind, profile_so_far: input.profile, history: input.history, message: input.message }, OnboardOut);
+  onboard(workspaceId: string, input: { kind: string; profile: Record<string, unknown>; history: ChatTurn[]; message: string | null; accounts?: Array<Record<string, unknown>> }) {
+    return this.run(workspaceId, 'onboard', { workspace_kind: input.kind, profile_so_far: input.profile, history: input.history, message: input.message, connected_accounts: wrapUntrusted(input.accounts ?? []) }, OnboardOut);
   }
 
   caption(workspaceId: string, input: { topic: string; profile: Record<string, unknown>; kind: string; untrusted?: string[] }) {
@@ -106,6 +106,10 @@ export class Skills {
     }, CaptionOut);
   }
 }
+
+/** Platform text (bios, captions) can be written by anyone, so it reaches the model only as wrapped data. */
+export const wrapUntrusted = (accounts: Array<Record<string, unknown>>): string[] =>
+  accounts.map((a) => `<untrusted_data>${JSON.stringify(a).replace(/</g, '&lt;').slice(0, 3000)}</untrusted_data>`);
 
 const MONTHS = 'jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december';
 const CLAIM_PATTERNS: RegExp[] = [

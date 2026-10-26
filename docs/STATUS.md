@@ -26,6 +26,8 @@ Honest state per capability. Goal-level coverage per persona: docs/GOAL-COVERAGE
 | WhatsApp Cloud API adapter | Code + mocked-network tests only | T-ADP-01, T-ADP-02 |
 | Meta Instagram/Facebook publish adapter | Code + mocked-network tests only; OFF by default | T-ADP-03..05 |
 | Meta login (OAuth) for Pages + linked Instagram | Code only, untested | — |
+| Page link → one-tap connect → page info (name, bio, followers, recent posts) via official API; never scraped | Tested with demo provider; Meta fields UNVERIFIED | L-01..L-03 |
+| Conversational onboarding and chat with Claude (history, kind switch with consent) | Tested with a stubbed model; real Claude used manually by the owner | O-01, O-02, T-CHAT-01..04 |
 | Claude adapter | Code only; needs key and budget | eval runner |
 
 ## Known gaps (not built)

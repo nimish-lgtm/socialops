@@ -15,6 +15,12 @@ import { runScheduler } from './scheduler';
 
 const loadTask = (d: Deps, ws: string, id: string) => d.db.tenant(ws, (tx) => tx.one<TaskRow>('SELECT * FROM tasks WHERE id=$1', [id]));
 
+/** What the platforms reported about the workspace's connected accounts, for the model's context (data, not instructions). */
+export async function connectedAccountsInfo(d: Deps, ws: string): Promise<Array<Record<string, unknown>>> {
+  const rows = await d.db.tenant(ws, (tx) => tx.q<{ platform: string; label: string | null; info: Record<string, unknown> | null }>(`SELECT platform, label, info FROM accounts WHERE status='connected' AND info IS NOT NULL`));
+  return rows.map((r) => ({ platform: r.platform, label: r.label, ...r.info }));
+}
+
 /** Fixed-question onboarding used without a model (or if the model fails): fills the next missing field. */
 export function scriptedTurn(kind: string, answers: Record<string, string>, message: string | null) {
   const missing = onboardingQuestions(kind).filter((q) => !answers[q.key]);
@@ -154,6 +160,26 @@ export function registerJobs(d: Deps): void {
     },
   });
 
+  q.on('account_info', {
+    leaseMs: 60_000,
+    async run(job) {
+      const ws = job.workspace_id!;
+      const acct = await d.db.tenant(ws, (tx) => tx.one<AccountRow>('SELECT * FROM accounts WHERE id=$1', [String(job.payload.accountId)]));
+      if (!acct || acct.status !== 'connected') return;
+      let token: string;
+      try { token = await d.db.tenant(ws, (tx) => d.credentials.token(tx, acct.id, d.clock.now())); } catch { return; }
+      let info;
+      try { info = await d.gateway.call('analyst', 'social.info', { workspaceId: ws }, () => d.social.accountInfo({ account: accountRef(acct), token })); }
+      catch (e) { if ((e as AppError).code === 'token_expired') { await reconnectNotice(d, ws, acct); return; } throw e; }
+      await d.db.tenant(ws, async (tx) => {
+        await tx.q('UPDATE accounts SET info=$2, info_at=$3 WHERE id=$1', [acct.id, info, d.clock.now()]);
+        const summary = [info.name, info.username && '@' + info.username, info.category, info.bio, info.followers !== null && `${info.followers} followers`].filter(Boolean).join(' · ');
+        if (summary) await tx.q(`INSERT INTO memory_items(id, workspace_id, account_id, kind, body, source, created_at) VALUES($1,$2,$3,'fact',$4,'platform',$5)`, [newId('mem'), ws, acct.id, summary.slice(0, 2000), d.clock.now()]);
+        for (const o of await owners(tx, ws)) await d.messenger.queue(tx, { workspaceId: ws, to: o, msg: { kind: 'text', body: copy.accountInfo(info) }, key: `acctinfo:${acct.id}:${job.id}:${o}` });
+      });
+    },
+  });
+
   q.on('onboard_turn', {
     leaseMs: 90_000,
     async run(job) {
@@ -167,7 +193,7 @@ export function registerJobs(d: Deps): void {
       const answers = (t.data.answers ?? {}) as Record<string, string>;
       let turn: { reply: string; profile: Record<string, string>; done: boolean; setKind: string | null } | null = null;
       if (d.llm.kind !== 'fake') {
-        const r = await d.skills.onboard(ws, { kind, profile: answers, history: message ? history.slice(0, -1) : history, message });
+        const r = await d.skills.onboard(ws, { kind, profile: answers, history: message ? history.slice(0, -1) : history, message, accounts: await connectedAccountsInfo(d, ws) });
         if (r.ok) turn = { reply: r.value.reply, profile: r.value.profile, done: r.value.done, setKind: r.value.set_kind };
       }
       await d.engine.dispatch(ws, t.id, 'turn', turn ?? scriptedTurn(kind, answers, message));

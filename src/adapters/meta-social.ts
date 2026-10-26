@@ -1,5 +1,5 @@
 import { AppError } from '../lib/errors';
-import type { AccountRef, MediaRef, PublishResult, SocialPort } from '../ports';
+import type { AccountInfo, AccountRef, MediaRef, PublishResult, SocialPort } from '../ports';
 import { isConnectError } from './cloud-whatsapp';
 
 /**
@@ -83,6 +83,29 @@ export class MetaSocial implements SocialPort {
     if (req.account.platform !== 'instagram') return { views: null, likes: null, comments: null };
     const j = await this.call('GET', req.externalId, { fields: 'like_count,comments_count' }, req.token);
     return { views: null, likes: num(j.like_count), comments: num(j.comments_count) };
+  }
+
+  /** Profile and recent posts via the official API. UNVERIFIED field names: confirm on developers.facebook.com. */
+  async accountInfo(req: { account: AccountRef; token: string }): Promise<AccountInfo> {
+    const a = req.account;
+    if (a.platform === 'instagram') {
+      const j = await this.call('GET', String(a.externalId), { fields: 'name,username,biography,website,followers_count,follows_count,media_count' }, req.token);
+      const m = await this.call('GET', `${a.externalId}/media`, { fields: 'caption,like_count,comments_count,permalink,timestamp', limit: '5' }, req.token);
+      return {
+        name: j.name ?? null, username: j.username ?? null, category: null, bio: j.biography ?? null, website: j.website ?? null,
+        followers: num(j.followers_count), following: num(j.follows_count), postsCount: num(j.media_count),
+        recent: ((m.data ?? []) as any[]).map((p) => ({ caption: p.caption ?? null, likes: num(p.like_count), comments: num(p.comments_count), url: p.permalink ?? null, at: p.timestamp ?? null })),
+        source: 'instagram_graph_api',
+      };
+    }
+    const j = await this.call('GET', String(a.externalId), { fields: 'name,username,category,about,website,followers_count,fan_count,link' }, req.token);
+    const posts = await this.call('GET', `${a.externalId}/posts`, { fields: 'message,permalink_url,created_time', limit: '5' }, req.token);
+    return {
+      name: j.name ?? null, username: j.username ?? null, category: j.category ?? null, bio: j.about ?? null, website: j.website ?? j.link ?? null,
+      followers: num(j.followers_count ?? j.fan_count), following: null, postsCount: null,
+      recent: ((posts.data ?? []) as any[]).map((p) => ({ caption: p.message ?? null, likes: null, comments: null, url: p.permalink_url ?? null, at: p.created_time ?? null })),
+      source: 'facebook_graph_api',
+    };
   }
 
   async checkToken(req: { account: AccountRef; token: string }): Promise<'ok' | 'expired'> {

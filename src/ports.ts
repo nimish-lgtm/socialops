@@ -24,6 +24,20 @@ export interface MediaRef { ref: string; mime: string; sha256: string; publicUrl
 
 export interface PublishResult { externalId: string; url: string | null }
 
+/** Account profile as the platform reports it. Missing values stay null; nothing is estimated. */
+export interface AccountInfo {
+  name: string | null;
+  username: string | null;
+  category: string | null;
+  bio: string | null;
+  website: string | null;
+  followers: number | null;
+  following: number | null;
+  postsCount: number | null;
+  recent: Array<{ caption: string | null; likes: number | null; comments: number | null; url: string | null; at: string | null }>;
+  source: string;
+}
+
 export interface SocialPort {
   readonly kind: 'fake' | 'live';
   canPublish(account: AccountRef): boolean;
@@ -32,6 +46,7 @@ export interface SocialPort {
   readback(req: { account: AccountRef; externalId: string; token: string }): Promise<{ live: boolean; url: string | null; caption: string | null }>;
   metrics(req: { account: AccountRef; externalId: string; token: string }): Promise<Record<string, number | null>>;
   checkToken(req: { account: AccountRef; token: string }): Promise<'ok' | 'expired'>;
+  accountInfo(req: { account: AccountRef; token: string }): Promise<AccountInfo>;
 }
 
 export interface LlmRequest { model: string; system: string; user: string; maxTokens: number }

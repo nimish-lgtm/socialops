@@ -355,3 +355,47 @@ describe('Conversational onboarding with a real model (stubbed)', () => {
     expect(h.last(P.owner)).toMatch(/2\) Aap kya bechte hain/);
   });
 });
+
+describe('Page link -> official connect -> full page info', () => {
+  const connectVia = async (url: string, kind = 'fb_page') => {
+    const u = new URL(url);
+    const page = await h.app.inject({ url: u.pathname + u.search });
+    const state = page.body.match(/name="state" value="([^"]+)"/)![1]!;
+    await h.app.inject({ method: 'POST', url: '/connect/fake', payload: `state=${encodeURIComponent(state)}&kind=${kind}&label=mypage`, headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+    await h.drain();
+  };
+
+  it('L-01 a pasted Facebook/Instagram link is never fetched: the owner gets a one-tap connect link, with no model call', async () => {
+    const llm = new FakeLlm(defaultScript);
+    h = await harness({ kind: 'creator', account: 'none', llm });
+    await h.say(P.owner, 'https://www.facebook.com/share/1FPchTSGqY/');
+    expect(h.last(P.owner)).toMatch(/link khol kar data nahi uthata/);
+    expect(h.last(P.owner)).toMatch(/\/connect\/start\?t=/);
+    expect(llm.calls).toHaveLength(0);
+    await h.say(P.editor, 'https://instagram.com/somepage');
+    expect(h.last(P.editor)).toMatch(/sirf owner/);
+  });
+
+  it('L-02 after the official login the page info (followers, bio, recent posts) is fetched, shown and remembered', async () => {
+    h = await harness({ kind: 'creator', account: 'none' });
+    await h.say(P.owner, 'https://www.facebook.com/share/1FPchTSGqY/');
+    await connectVia(h.last(P.owner).match(/https?:\/\/\S+connect\/start\S+/)![0]);
+    const info = h.texts(P.owner).find((t) => /Page ki info mil gayi/.test(t))!;
+    expect(info).toMatch(/DEMO data/);
+    expect(info).toMatch(/Followers: 1,240/);
+    expect((await h.sys(`SELECT info FROM accounts`))[0].info.followers).toBe(1240);
+    expect((await h.sys(`SELECT source FROM memory_items WHERE source='platform'`))).toHaveLength(1);
+  });
+
+  it('L-03 the model sees the connected page info as untrusted data during onboarding', async () => {
+    const seen: any[] = [];
+    const llm = { kind: 'live' as const, complete: async (r: any) => { const u = JSON.parse(r.user); seen.push(u); return { text: JSON.stringify({ reply: 'Aapka page dekh liya. Followers kaun hain?', profile: {}, set_kind: null, done: false }), inputTokens: 1, outputTokens: 1, measured: true }; } };
+    h = await harness({ kind: 'creator', account: 'none', onboarded: false, llm });
+    await h.sys(`UPDATE workspaces SET ai_daily_cap_minor=5000 WHERE id=$1`, [h.ws]);
+    await h.say(P.owner, 'connect');
+    await connectVia(h.last(P.owner).match(/https?:\/\/\S+/)![0], 'ig_pro');
+    await h.say(P.owner, 'hi');
+    const onb = seen.filter((u) => u.skill === 'onboard').at(-1);
+    expect(onb.connected_accounts[0]).toMatch(/^<untrusted_data>.*"followers":1240/);
+  });
+});

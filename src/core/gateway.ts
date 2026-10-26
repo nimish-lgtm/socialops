@@ -15,6 +15,7 @@ export const TOOLS: Record<string, ToolDef> = {
   'social.readback': { access: 'read', needsApproval: false, roles: ['publisher', 'analyst'], timeoutMs: 30_000 },
   'social.metrics': { access: 'read', needsApproval: false, roles: ['analyst'], timeoutMs: 30_000 },
   'social.check': { access: 'read', needsApproval: false, roles: ['health'], timeoutMs: 30_000 },
+  'social.info': { access: 'read', needsApproval: false, roles: ['analyst'], timeoutMs: 30_000 },
   'llm.complete': { access: 'model', needsApproval: false, roles: ['skills'], timeoutMs: 60_000 },
 };
 

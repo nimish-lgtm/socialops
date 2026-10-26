@@ -37,6 +37,20 @@ export const copy = {
   greet: 'Namaste! 🙏 Photo ya video bhejiye, saath mein 1 line likhiye ki ye kis baare mein hai. Main caption bana kar approval ke liye bhejunga. Aur options ke liye "help" likhein.',
   help: 'Main ye kar sakta hoon:\n• Video/photo bhejein → caption + approval → post\n• "report" → last posts ke numbers\n• "connect" → Instagram/Facebook jodna\n• "status", "pause", "resume"\n• "forget" → meri yaad hataana, "export", "delete" → aapka data',
   demoMode: 'Main abhi demo mode mein hoon (AI band hai), isliye sirf commands samajhta hoon: help, report, status, connect, ya photo/video bhejein. Baat-cheet ke liye AI key jodni hogi.',
+  pageLinkSeen: (url: string) => `Ye aapka page lagta hai 👍 Main link khol kar data nahi uthata (Facebook/Instagram iski izazat nahi dete). Is link se ek baar login karke page jodiye, phir main page ki poori info (followers, bio, recent posts) khud la dunga:\n${url}`,
+  pageLinkNotOwner: 'Page jodne ka kaam sirf owner kar sakta hai.',
+  accountInfo: (i: { name: string | null; username: string | null; category: string | null; bio: string | null; followers: number | null; following: number | null; postsCount: number | null; recent: Array<{ caption: string | null; likes: number | null; comments: number | null }>; source: string }) => {
+    const n = (v: number | null) => (v === null ? 'pata nahi' : v.toLocaleString('en-IN'));
+    const lines = [
+      `Page ki info mil gayi${i.source === 'demo' ? ' (DEMO data, test login)' : ''}:`,
+      `• ${i.name ?? 'naam nahi mila'}${i.username ? ` (@${i.username})` : ''}${i.category ? ` · ${i.category}` : ''}`,
+      `• Followers: ${n(i.followers)} · Following: ${n(i.following)} · Posts: ${n(i.postsCount)}`,
+      ...(i.bio ? [`• Bio: ${i.bio.slice(0, 160)}`] : []),
+      ...(i.recent.length ? ['• Recent posts:', ...i.recent.slice(0, 3).map((r) => `   - ${(r.caption ?? '(bina caption)').split('\n')[0]!.slice(0, 50)}${r.likes !== null ? ` · ${r.likes} likes` : ''}${r.comments !== null ? ` · ${r.comments} comments` : ''}`)] : []),
+      'Ye info maine aapke profile mein rakh li hai, aage ke suggestions isi par honge.',
+    ];
+    return lines.join('\n');
+  },
   notUnderstood: 'Samajh nahi aaya. "help" likhein, ya video/photo bhejein.',
   aiLimited: 'Abhi main sirf simple commands samajh sakta hoon: help, report, status, connect. (AI limit)',
   viewerOnly: 'Aapke paas sirf dekhne ka access hai. Owner ya editor se kahein.',

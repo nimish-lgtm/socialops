@@ -8,6 +8,7 @@ import { copy } from '../copy';
 import { HOUR } from '../lib/clock';
 import { CONSENT_EVENTS } from '../workflows/helpers';
 import { renderCard } from '../workflows/post';
+import { connectedAccountsInfo } from '../jobs/handlers';
 import type { ChatTurn } from '../skills/skills';
 
 const HISTORY_TURNS = 8;
@@ -64,6 +65,14 @@ async function routeIn(d: Deps, member: Member, m: InMsg): Promise<void> {
     if (m.type === 'other') return reply(copy.notUnderstood);
     if (looksLikeSecret(text)) return reply(copy.secretWarning);
 
+    // A Facebook/Instagram link: never scraped; the owner gets a one-tap official connect link instead.
+    const pageLink = text.match(/https?:\/\/(?:www\.|m\.|web\.)?(?:facebook\.com|fb\.com|fb\.me|instagram\.com)\/\S*/i);
+    if (pageLink) {
+      if (member.role !== 'owner') return reply(copy.pageLinkNotOwner);
+      const token = await d.links.create(tx, { workspaceId: ws, kind: 'reconnect', ref: 'connect', expiresAt: new Date(d.clock.now().getTime() + HOUR) });
+      return reply(copy.pageLinkSeen(d.links.url('/connect/start', token)));
+    }
+
     // Escape words always work, even while the bot is waiting for an answer.
     if (cmd === 'help') return reply(copy.help);
     if (cmd === 'cancel') return cancelAwaited(d, tx, member, reply);
@@ -85,7 +94,7 @@ async function routeIn(d: Deps, member: Member, m: InMsg): Promise<void> {
 
     const history = (await tx.one<{ history: ChatTurn[] }>('SELECT history FROM conversations WHERE phone=$1', [member.phone]))?.history ?? [];
     const profile = (await tx.one<{ answers: Record<string, unknown> }>('SELECT answers FROM profiles WHERE workspace_id=$1', [ws]))?.answers ?? {};
-    const r = await d.skills.intent(ws, text, w.kind, history, profile);
+    const r = await d.skills.intent(ws, text, w.kind, history, profile, await connectedAccountsInfo(d, ws));
     if (!r.ok) return reply(r.reason === 'denied' ? copy.aiLimited : copy.notUnderstood);
     if (r.value.contains_secret) return reply(copy.secretWarning);
     const map: Record<string, string> = { new_post: 'new_post', report: 'report', status: 'status', help: 'help', connect: 'connect' };

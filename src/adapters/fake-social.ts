@@ -1,6 +1,6 @@
 import { newId } from '../lib/ids';
 import { AppError } from '../lib/errors';
-import type { AccountRef, PublishResult, SocialPort } from '../ports';
+import type { AccountInfo, AccountRef, PublishResult, SocialPort } from '../ports';
 
 export type SocialFault = 'none' | 'timeout_after_success' | 'timeout_before_send' | 'reject' | 'not_live' | 'metrics_missing' | 'token_expired';
 
@@ -44,4 +44,16 @@ export class FakeSocial implements SocialPort {
   }
 
   async checkToken(): Promise<'ok' | 'expired'> { return this.fault === 'token_expired' ? 'expired' : 'ok'; }
+
+  /** Demo profile, clearly labelled as such; recent posts include anything published through this fake. */
+  async accountInfo(req: { account: AccountRef }): Promise<AccountInfo> {
+    if (this.fault === 'token_expired') throw new AppError('token_expired', 'definitive');
+    const mine = [...this.posts.values()].filter((p) => p.accountId === req.account.id).reverse().slice(0, 5);
+    return {
+      name: `Demo page (${req.account.externalId ?? req.account.id})`, username: 'demo_page', category: 'Demo category',
+      bio: 'DEMO DATA: test login, not a real page', website: null, followers: 1240, following: 180, postsCount: 42 + mine.length,
+      recent: mine.map((p) => ({ caption: p.caption, likes: 14, comments: 3, url: p.url, at: null })),
+      source: 'demo',
+    };
+  }
 }
