@@ -249,3 +249,49 @@ describe('greetings', () => {
     expect(h.last(P.owner)).toMatch(/1\) Aapka kaam/);
   });
 });
+
+describe('conversation', () => {
+  const liveChat = (fn: (user: any) => Record<string, unknown>) => {
+    const calls: any[] = [];
+    return { calls, llm: { kind: 'live' as const, complete: async (r: any) => { const u = JSON.parse(r.user); calls.push(u); return { text: JSON.stringify(fn(u)), inputTokens: 300, outputTokens: 60, measured: true }; } } };
+  };
+
+  it('T-CHAT-01 with a real model, free text gets a natural reply and the next turn sees the history', async () => {
+    const m = liveChat((u) => ({ intent: 'other', topic: null, needs_clarification: null, contains_secret: false, reply: u.history.length ? 'Haan, Diwali ke liye mithai thali wali reel badhiya rahegi. Video bhejiye!' : 'Namaste! Diwali ke liye 3 idea: 1) mithai banne ka process 2) gift box 3) customer ki muskaan. Kaunsa pasand aaya?' }));
+    h = await harness({ llm: m.llm });
+    await h.sys(`UPDATE workspaces SET ai_daily_cap_minor=5000 WHERE id=$1`, [h.ws]);
+    await h.say(P.owner, 'diwali ke liye kya post karun?');
+    expect(h.last(P.owner)).toMatch(/3 idea/);
+    await h.say(P.owner, 'gift box wala achha laga');
+    expect(h.last(P.owner)).toMatch(/Video bhejiye/);
+    expect(m.calls[1].history).toEqual([{ role: 'user', text: 'diwali ke liye kya post karun?' }, { role: 'assistant', text: expect.stringMatching(/3 idea/) }]);
+    expect(m.calls[1].workspace_context.business).toBe('Mithai shop');
+  });
+
+  it('T-CHAT-02 an action intent still runs the action, after the model\'s own reply', async () => {
+    const m = liveChat(() => ({ intent: 'report', topic: null, needs_clarification: null, contains_secret: false, reply: 'Abhi dikhata hoon.' }));
+    h = await harness({ llm: m.llm });
+    await h.sys(`UPDATE workspaces SET ai_daily_cap_minor=5000 WHERE id=$1`, [h.ws]);
+    await h.say(P.owner, 'mere posts kaise chal rahe hain yaar');
+    const t = h.texts(P.owner);
+    expect(t).toContain('Abhi dikhata hoon.');
+    expect(t.join('\n')).toMatch(/koi post live nahi/);
+  });
+
+  it('T-CHAT-03 without an AI key the bot says it is in demo mode instead of "not understood"', async () => {
+    h = await harness();
+    await h.say(P.owner, 'aaj mausam kaisa hai');
+    expect(h.last(P.owner)).toMatch(/demo mode/);
+  });
+
+  it('T-CHAT-04 forget clears the chat history', async () => {
+    const m = liveChat(() => ({ intent: 'other', topic: null, needs_clarification: null, contains_secret: false, reply: 'Theek hai!' }));
+    h = await harness({ llm: m.llm });
+    await h.sys(`UPDATE workspaces SET ai_daily_cap_minor=5000 WHERE id=$1`, [h.ws]);
+    await h.say(P.owner, 'kuch baat karte hain');
+    expect((await h.sys(`SELECT history FROM conversations WHERE phone=$1`, [P.owner]))[0].history).toHaveLength(2);
+    await h.say(P.owner, 'forget');
+    await h.tap(P.owner, 'f:y');
+    expect((await h.sys(`SELECT history FROM conversations WHERE phone=$1`, [P.owner]))[0].history).toEqual([]);
+  });
+});

@@ -132,7 +132,7 @@ export function registerJobs(d: Deps): void {
       const phones = await d.db.system(async (tx) => {
         const ph = (await tx.q<{ phone: string }>(`SELECT phone FROM members WHERE workspace_id=$1 AND role='owner'`, [ws])).map((r) => r.phone);
         await tx.q(`UPDATE audit SET workspace_id=$2, detail='{}' WHERE workspace_id=$1`, [ws, 'erased:' + sha256(ws).slice(0, 12)]);
-        await tx.q(`UPDATE conversations SET workspace_id=NULL, state='idle', context='{}' WHERE workspace_id=$1`, [ws]);
+        await tx.q(`UPDATE conversations SET workspace_id=NULL, state='idle', context='{}', history='[]' WHERE workspace_id=$1`, [ws]);
         await tx.q(`DELETE FROM workspaces WHERE id=$1`, [ws]);
         for (const p of ph) await d.messenger.queue(tx, { workspaceId: null, to: p, msg: { kind: 'text', body: copy.deleted }, key: `erased:${ws}:${p}` });
         await tx.q(`INSERT INTO audit(workspace_id, actor, event, detail) VALUES(NULL,'system','workspace_erased','{}')`);

@@ -8,6 +8,9 @@ import { copy } from '../copy';
 import { HOUR } from '../lib/clock';
 import { CONSENT_EVENTS } from '../workflows/helpers';
 import { renderCard } from '../workflows/post';
+import type { ChatTurn } from '../skills/skills';
+
+const HISTORY_TURNS = 8;
 import type { InMsg } from './ingress';
 
 export interface Member { phone: string; workspace_id: string; role: string }
@@ -80,13 +83,22 @@ async function routeIn(d: Deps, member: Member, m: InMsg): Promise<void> {
     if (!w.onboarded && member.role === 'owner' && (!cmd || cmd === 'greet')) return startOnboarding(d, tx, w, member, reply);
     if (cmd) return command(d, tx, w, member, cmd, reply);
 
-    const r = await d.skills.intent(ws, text, w.kind);
+    const history = (await tx.one<{ history: ChatTurn[] }>('SELECT history FROM conversations WHERE phone=$1', [member.phone]))?.history ?? [];
+    const profile = (await tx.one<{ answers: Record<string, unknown> }>('SELECT answers FROM profiles WHERE workspace_id=$1', [ws]))?.answers ?? {};
+    const r = await d.skills.intent(ws, text, w.kind, history, profile);
     if (!r.ok) return reply(r.reason === 'denied' ? copy.aiLimited : copy.notUnderstood);
     if (r.value.contains_secret) return reply(copy.secretWarning);
     const map: Record<string, string> = { new_post: 'new_post', report: 'report', status: 'status', help: 'help', connect: 'connect' };
     const c = map[r.value.intent];
-    if (c) return command(d, tx, w, member, c, reply);
-    return reply(r.value.needs_clarification ?? copy.notUnderstood);
+    const said = r.value.reply ?? (c ? null : r.value.needs_clarification);
+    // Keep a short rolling history so the next turn has context; message text stays out of logs and inbound rows.
+    if (said) await tx.q('UPDATE conversations SET history=$2 WHERE phone=$1', [member.phone, JSON.stringify([...history, { role: 'user', text: text.slice(0, 500) }, { role: 'assistant', text: said.slice(0, 500) }].slice(-HISTORY_TURNS))]); // pg sends JS arrays as SQL arrays, so stringify
+    if (c) {
+      if (said) await reply(said, ':chat');
+      return command(d, tx, w, member, c, reply);
+    }
+    if (said) return reply(said);
+    return reply(d.llm.kind === 'fake' ? copy.demoMode : copy.notUnderstood);
   });
 }
 
@@ -236,6 +248,7 @@ async function onButton(d: Deps, tx: Tx, member: Member, id: string, reply: Repl
     if (ref !== 'y') return reply('Theek hai, kuch nahi hataya.');
     await tx.q(`UPDATE memory_items SET body='', deleted_at=$1 WHERE deleted_at IS NULL`, [d.clock.now()]);
     await tx.q(`UPDATE profiles SET answers='{}', step=0, completed_at=NULL`);
+    await tx.q(`UPDATE conversations SET history='[]' WHERE workspace_id=$1`, [member.workspace_id]);
     await tx.q(`UPDATE workspaces SET onboarded=false WHERE id=$1`, [member.workspace_id]);
     await tx.q(`INSERT INTO audit(workspace_id, actor, event, detail) VALUES($1,$2,'memory_forgotten','{}')`, [member.workspace_id, member.phone]);
     return reply(copy.forgotten);

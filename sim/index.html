@@ -43,7 +43,7 @@
   <select id="onb"><option value="true">already onboarded</option><option value="false">fresh (onboarding)</option></select>
   <button id="setup">Reset demo workspace</button>
   <button id="tick">Run scheduler tick</button>
-  <span class="muted" style="color:#d9f3ee">Nothing real is posted or sent.</span>
+  <span style="color:#d9f3ee">AI: <b id="ai">…</b> · Nothing real is posted or sent.</span>
 </header>
 <main>
   <section class="phone">
@@ -92,6 +92,7 @@ async function refresh() {
   const s = await api('state?phone=' + $('phone').value);
   const html = s.chat.map(m => '<div class="msg ' + m.dir + '">' + esc(m.text) + (m.buttons && m.buttons.length ? '<div class="btns">' + m.buttons.map(b => '<button data-id="' + esc(b.id) + '" data-title="' + esc(b.title) + '">' + esc(b.title) + '</button>').join('') + '</div>' : '') + '</div>').join('');
   if (html !== lastChat) { $('chat').innerHTML = html; $('chat').scrollTop = 1e9; lastChat = html; }
+  $('ai').textContent = s.ai || '';
   const st = s.state;
   $('ws').innerHTML = st ? table([st.workspace]) + table(st.accounts) + '<div class="muted">AI calls: ' + st.usage.calls + ', estimated cost: ₹' + (st.usage.paise / 100).toFixed(2) + '</div>' : '<span class="muted">Click "Reset demo workspace"</span>';
   for (const k of ['tasks', 'approvals', 'ledger', 'posts', 'jobs', 'audit']) $(k).innerHTML = st ? table(st[k]) : '';

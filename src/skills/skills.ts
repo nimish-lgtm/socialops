@@ -14,8 +14,10 @@ export const IntentOut = z.object({
   topic: z.string().max(500).nullable().catch(null),
   needs_clarification: z.string().max(300).nullable().catch(null),
   contains_secret: z.boolean().catch(false),
+  reply: z.string().max(1200).nullable().catch(null).optional().transform((v) => v ?? null),
 });
 export type Intent = z.infer<typeof IntentOut>;
+export interface ChatTurn { role: 'user' | 'assistant'; text: string }
 
 export const CaptionOut = z.object({
   caption: z.string().min(1).max(1000),
@@ -48,7 +50,7 @@ export class Skills {
     if (hit && d.clock.now().getTime() - hit.at < 3600_000) return { ok: true, value: hit.value as T };
     const fake = d.llm.kind === 'fake';
     const model = fake ? 'fake' : tier === 'small' ? d.config.llm.small : d.config.llm.large;
-    const maxTokens = skill === 'caption' ? 700 : 200;
+    const maxTokens = skill === 'caption' ? 700 : 500;
     for (let attempt = 0; attempt < 2; attempt++) {
       const now = d.clock.now();
       const est = costMinor(model, estimateTokens(CORE_PROMPT + user), maxTokens);
@@ -78,8 +80,8 @@ export class Skills {
     return { ok: false, reason: 'invalid' };
   }
 
-  intent(workspaceId: string, message: string, kind: string) {
-    return this.run(workspaceId, 'intent', { message: message.slice(0, 1000), workspace_kind: kind }, IntentOut);
+  intent(workspaceId: string, message: string, kind: string, history: ChatTurn[] = [], profile: Record<string, unknown> = {}) {
+    return this.run(workspaceId, 'intent', { message: message.slice(0, 1000), workspace_kind: kind, history, workspace_context: profile }, IntentOut);
   }
 
   caption(workspaceId: string, input: { topic: string; profile: Record<string, unknown>; kind: string; untrusted?: string[] }) {

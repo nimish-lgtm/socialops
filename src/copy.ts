@@ -36,6 +36,7 @@ export const copy = {
   onboardingDone: 'Shukriya! Profile save ho gaya. Ab koi video ya photo bhejiye, main caption bana kar approval ke liye bhejunga. Account jodne ke liye "connect" likhein.',
   greet: 'Namaste! 🙏 Photo ya video bhejiye, saath mein 1 line likhiye ki ye kis baare mein hai. Main caption bana kar approval ke liye bhejunga. Aur options ke liye "help" likhein.',
   help: 'Main ye kar sakta hoon:\n• Video/photo bhejein → caption + approval → post\n• "report" → last posts ke numbers\n• "connect" → Instagram/Facebook jodna\n• "status", "pause", "resume"\n• "forget" → meri yaad hataana, "export", "delete" → aapka data',
+  demoMode: 'Main abhi demo mode mein hoon (AI band hai), isliye sirf commands samajhta hoon: help, report, status, connect, ya photo/video bhejein. Baat-cheet ke liye AI key jodni hogi.',
   notUnderstood: 'Samajh nahi aaya. "help" likhein, ya video/photo bhejein.',
   aiLimited: 'Abhi main sirf simple commands samajh sakta hoon: help, report, status, connect. (AI limit)',
   viewerOnly: 'Aapke paas sirf dekhne ka access hai. Owner ya editor se kahein.',

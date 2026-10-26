@@ -79,7 +79,7 @@ export function registerSim(app: FastifyInstance, d: Deps): void {
       ...wa.sent.filter((s) => s.to === phone).map((s) => ({ dir: 'out', text: s.msg.kind === 'template' ? `[template ${s.msg.name}]` : s.msg.body, buttons: s.msg.kind === 'buttons' ? s.msg.buttons : [], at: s.at })),
     ].sort((a, b) => a.at - b.at);
     const ws = await d.db.system((tx) => tx.one<{ workspace_id: string }>('SELECT workspace_id FROM members WHERE phone=$1', [SIM_PHONES.owner]));
-    if (!ws) return { chat, state: null };
+    if (!ws) return { chat, state: null, ai: d.llm.kind === 'fake' ? 'demo (keywords only, no AI key)' : `Claude ${d.config.llm.small}` };
     const state = await d.db.system(async (tx) => ({
       workspace: await tx.one('SELECT id, name, kind, status, onboarded FROM workspaces WHERE id=$1', [ws.workspace_id]),
       accounts: await tx.q('SELECT platform, surface, account_type, route, status, label FROM accounts WHERE workspace_id=$1', [ws.workspace_id]),
@@ -91,7 +91,7 @@ export function registerSim(app: FastifyInstance, d: Deps): void {
       audit: await tx.q('SELECT event, actor, detail, at FROM audit WHERE workspace_id=$1 ORDER BY id DESC LIMIT 15', [ws.workspace_id]),
       usage: await tx.one('SELECT COUNT(*) calls, COALESCE(SUM(cost_minor),0) paise FROM usage_events WHERE workspace_id=$1', [ws.workspace_id]),
     }));
-    return { chat, state, faults: { wa: wa.fault, social: social.fault, llm: d.llm instanceof FakeLlm ? d.llm.fail : 'n/a' }, platformPosts: social.posts.size };
+    return { chat, state, ai: d.llm.kind === 'fake' ? 'demo (keywords only, no AI key)' : `Claude ${d.config.llm.small}`, faults: { wa: wa.fault, social: social.fault, llm: d.llm instanceof FakeLlm ? d.llm.fail : 'n/a' }, platformPosts: social.posts.size };
   });
 
   app.post('/sim/api/faults', async (req) => {
