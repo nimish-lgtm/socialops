@@ -46,7 +46,9 @@ export class FfprobeInspector implements MediaInspector {
         height: v?.height ?? null,
         hasAudio: mime.startsWith('video/') ? !!j.streams?.some((s) => s.codec_type === 'audio') : null,
       };
-    } catch {
+    } catch (e) {
+      // ffprobe not installed: skip the check instead of rejecting every file.
+      if ((e as { code?: string }).code === 'ENOENT') return { durationS: null, width: null, height: null, hasAudio: null, skipped: true };
       return { durationS: null, width: null, height: null, hasAudio: null };
     }
   }

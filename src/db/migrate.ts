@@ -7,7 +7,8 @@ export const APP_ROLES = ['socialops_app', 'socialops_system'] as const;
 
 /** Create the two runtime roles if missing. Needs a superuser or CREATEROLE connection. */
 export async function ensureRoles(adminUrl: string, password: string): Promise<void> {
-  const c = new pg.Client({ connectionString: adminUrl });
+  // Roles are cluster-wide; connect to the always-present "postgres" database so this works before the app database exists.
+  const c = new pg.Client({ connectionString: withDbName(adminUrl, 'postgres') });
   await c.connect();
   try {
     for (const role of APP_ROLES) {

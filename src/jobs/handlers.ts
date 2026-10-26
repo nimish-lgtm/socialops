@@ -14,9 +14,10 @@ import { runScheduler } from './scheduler';
 
 const loadTask = (d: Deps, ws: string, id: string) => d.db.tenant(ws, (tx) => tx.one<TaskRow>('SELECT * FROM tasks WHERE id=$1', [id]));
 
-export function qcProblems(qc: { durationS: number | null; width: number | null; height: number | null }, mime: string): string[] {
+export function qcProblems(qc: { durationS: number | null; width: number | null; height: number | null; skipped?: boolean }, mime: string): string[] {
   const p: string[] = [];
   if (!mime.startsWith('video/') && !mime.startsWith('image/')) return ['sirf photo ya video chalega'];
+  if (qc.skipped) return p;
   if (!qc.width || !qc.height) p.push('file padh nahi paya'); // ffprobe reports 0x0 for corrupt files
   if (mime.startsWith('video/') && qc.durationS !== null && qc.durationS < 3) p.push('video 3 second se chhota hai');
   if (mime.startsWith('video/') && qc.durationS !== null && qc.durationS > 900) p.push('video 15 minute se lamba hai');
@@ -54,6 +55,7 @@ export function registerJobs(d: Deps): void {
       const stored = await d.storage.put(ws, media.data, mime);
       const qc = await d.inspector.inspect(d.storage.resolve(stored.ref), mime);
       const problems = qcProblems(qc, mime);
+      if (qc.skipped) d.log.warn('media_qc_skipped', { reason: 'ffprobe not installed' });
       const assetId = newId('asset');
       await d.db.tenant(ws, async (tx) => {
         await tx.q(`INSERT INTO assets(id, workspace_id, kind, ref, sha256, mime, bytes, qc, created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,

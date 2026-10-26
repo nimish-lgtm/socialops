@@ -48,5 +48,5 @@ export interface StoragePort {
 }
 
 export interface MediaInspector {
-  inspect(path: string, mime: string): Promise<{ durationS: number | null; width: number | null; height: number | null; hasAudio: boolean | null }>;
+  inspect(path: string, mime: string): Promise<{ durationS: number | null; width: number | null; height: number | null; hasAudio: boolean | null; skipped?: boolean }>;
 }

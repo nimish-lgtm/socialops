@@ -7,16 +7,19 @@ official APIs, reads it back to verify it is live, and reports the platform's ow
 Status: everything below runs and is tested against fakes and a real Postgres. Nothing has been run against real
 WhatsApp, Meta or a live model yet. See `docs/STATUS.md` for exactly what is built, verified and open.
 
-## Quick start (no accounts needed)
+## Quick start (no accounts needed) — Windows, macOS or Linux
 
-Requirements: Node 22+, Postgres 16, ffmpeg/ffprobe.
+Requirements: Node 22+ and Git. Postgres and ffmpeg are optional.
 
 ```sh
+git clone -b claude/eloquent-brown-r231x2 https://github.com/nimish-lgtm/socialops
+cd socialops
 npm install
-cp .env.example .env          # MODE=sim works as is with a local Postgres superuser socialops_owner/dev
-npm run db:setup              # creates runtime roles, the database and the schema
-npm run dev                   # http://localhost:8080/sim
+npm run dev                   # then open http://localhost:8080/sim
 ```
+
+`npm run dev` uses the Postgres at `DATABASE_URL` if one is running; otherwise it starts a built-in Postgres
+(stored in `./data/pg`, first start takes about 20 seconds). Without ffmpeg installed, the media quality check is skipped.
 
 In the simulator you chat as the owner, an editor, a viewer or a stranger, send real photos/videos, tap buttons,
 and watch tasks, approvals, the ledger, posts, jobs and the audit log update. Fault switches let you make the platform
