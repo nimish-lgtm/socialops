@@ -5,7 +5,7 @@ import path from 'node:path';
 import pg from 'pg';
 import EmbeddedPostgres from 'embedded-postgres';
 import { loadConfig, loadEnvFile } from '../src/config';
-import { createDatabase, ensureRoles, migrate } from '../src/db/migrate';
+import { createDatabase, dropDatabase, ensureRoles, migrate } from '../src/db/migrate';
 
 process.env.MODE ??= 'sim';
 loadEnvFile();
@@ -18,27 +18,19 @@ async function reachable(url: string): Promise<boolean> {
   try { await c.connect(); await c.end(); return true; } catch { return false; }
 }
 
-async function isUtf8(url: string): Promise<boolean> {
-  const c = new pg.Client({ connectionString: url });
-  await c.connect();
-  try { return (await c.query('SHOW server_encoding')).rows[0].server_encoding === 'UTF8'; } finally { await c.end(); }
-}
-
 let cfg = loadConfig();
+let usingEmbedded = false;
 if (!(await reachable(cfg.databaseUrl))) {
+  usingEmbedded = true;
   console.log('No Postgres at DATABASE_URL; starting the built-in one (first start takes ~20 s)...');
   const dir = path.resolve(process.env.EMBEDDED_PG_DIR ?? 'data/pg');
   // UTF8 explicitly: on Windows initdb otherwise picks WIN1252, which cannot store emoji or Devanagari.
   const make = () => new EmbeddedPostgres({ databaseDir: dir, user: 'socialops_owner', password: 'dev', port: EMBEDDED_PORT, persistent: true, initdbFlags: ['--encoding=UTF8', '--locale=C'], onLog: () => {}, onError: () => {} });
-  let db = make();
-  if (!fs.existsSync(path.join(dir, 'PG_VERSION'))) await db.initialise();
-  await db.start();
-  if (!(await isUtf8(`postgres://socialops_owner:dev@localhost:${EMBEDDED_PORT}/postgres`))) {
-    console.log('Built-in database was created with a non-UTF8 encoding; recreating it (demo data is reset)...');
-    await db.stop();
-    fs.rmSync(dir, { recursive: true, force: true });
-    db = make();
-    await db.initialise();
+  const embeddedUrl = `postgres://socialops_owner:dev@localhost:${EMBEDDED_PORT}/postgres`;
+  // A built-in Postgres left running by an earlier session (common on Windows after Ctrl+C) is reused.
+  if (!(await reachable(embeddedUrl))) {
+    const db = make();
+    if (!fs.existsSync(path.join(dir, 'PG_VERSION'))) await db.initialise();
     await db.start();
   }
   process.env.DATABASE_URL = `postgres://socialops_owner:dev@localhost:${EMBEDDED_PORT}/socialops_dev`;
@@ -52,8 +44,14 @@ await check.connect();
 const dbEnc = (await check.query('SELECT pg_encoding_to_char(encoding) e FROM pg_database WHERE datname = current_database()')).rows[0].e;
 await check.end();
 if (dbEnc !== 'UTF8') {
-  console.error(`Database ${dbName} uses ${dbEnc}, which cannot store emoji or Hindi text. Drop it and run npm run dev again (it will be recreated as UTF8).`);
-  process.exit(1);
+  if (!usingEmbedded) {
+    console.error(`Database ${dbName} uses ${dbEnc}, which cannot store emoji or Hindi text. Drop it and run npm run dev again (it is recreated as UTF8).`);
+    process.exit(1);
+  }
+  // Only the app database is recreated (as UTF8); cluster files are never deleted, so Windows file locks do not matter.
+  console.log(`Demo database used ${dbEnc}; recreating it as UTF8 (demo data is reset)...`);
+  await dropDatabase(cfg.databaseUrl, dbName);
+  await createDatabase(cfg.databaseUrl, dbName);
 }
 await migrate(cfg.databaseUrl);
 console.log(`Database ready. Open http://127.0.0.1:${cfg.port}/sim when you see "listening".`);
