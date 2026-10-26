@@ -58,7 +58,8 @@ export async function createDatabase(adminUrl: string, name: string, template?: 
   await c.connect();
   try {
     const exists = await c.query('SELECT 1 FROM pg_database WHERE datname=$1', [name]);
-    if (!exists.rowCount) await c.query(`CREATE DATABASE "${name}"${template ? ` TEMPLATE "${template}"` : ''}`);
+    // Always UTF8: emoji and Devanagari must be storable whatever the server's default encoding is.
+    if (!exists.rowCount) await c.query(`CREATE DATABASE "${name}" ${template ? `TEMPLATE "${template}"` : `ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0`}`);
   } finally {
     await c.end();
   }
